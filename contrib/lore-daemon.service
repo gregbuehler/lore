@@ -1,0 +1,21 @@
+# Linux systemd user service for the lore daemon.
+# This is a reference example. Use `lore daemon install` to generate
+# the correct unit with your actual paths, or copy and edit this manually.
+#
+# Install: cp lore-daemon.service ~/.config/systemd/user/
+#          systemctl --user enable --now lore-daemon
+
+[Unit]
+Description=Lore Index Daemon
+After=network.target
+
+[Service]
+Type=simple
+# %h expands to $HOME in systemd user units
+ExecStart=%h/.local/bin/lore daemon start --vault %h/Documents/lore/%u
+Restart=on-failure
+RestartSec=5
+Environment=LORE_VAULT=%h/Documents/lore/%u
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS LaunchAgent for the lore daemon.
+  This is a reference example. Use `lore daemon install` to generate
+  the correct plist with your actual paths, or copy and edit this manually.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.lore.daemon</string>
+
+    <key>Program</key>
+    <!-- Replace with: which lore -->
+    <string>/usr/local/bin/lore</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>lore</string>
+        <string>daemon</string>
+        <string>start</string>
+        <string>--vault</string>
+        <!-- Replace with your vault path (lore vault init defaults to ~/Documents/lore/$USER) -->
+        <string>/Users/YOURUSER/Documents/lore/YOURUSER</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>LORE_VAULT</key>
+        <string>/Users/YOURUSER/Documents/lore/YOURUSER</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/lore-daemon.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/lore-daemon.log</string>
+</dict>
+</plist>
