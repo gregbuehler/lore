@@ -715,4 +715,5 @@ func buildWatchContextPackage(entityName, entityType, currentPage string, change
 func init() {
 	watchCmd.Flags().StringVar(&watchEntity, "entity", "", "Watch a single entity (e.g., --entity argus)")
 	watchCmd.Flags().BoolVar(&watchDryRun, "dry-run", false, "Generate context packages without invoking the agent")
+	watchCmd.Flags().BoolVar(&agentDangerouslySkipPermissions, "dangerously-skip-permissions", false, "Pass --dangerously-skip-permissions to the configured agent")
 }

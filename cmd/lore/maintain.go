@@ -16,6 +16,7 @@ import (
 
 var maintainEntity string
 var maintainDryRun bool
+var agentDangerouslySkipPermissions bool
 
 var maintainCmd = &cobra.Command{
 	Use:   "maintain <library>",
@@ -351,13 +352,17 @@ func loadToneRules(libPath string) string {
 }
 
 // runAgent invokes the configured agent command with a prompt.
-// Uses -p for non-interactive mode with --dangerously-skip-permissions
-// so the agent can read/write files without confirmation prompts.
+// It uses -p for non-interactive mode; permission bypass is opt-in.
+func buildAgentArgs(prompt string, dangerouslySkipPermissions bool) []string {
+	args := []string{"-p", prompt}
+	if dangerouslySkipPermissions {
+		args = append([]string{"--dangerously-skip-permissions"}, args...)
+	}
+	return args
+}
+
 func runAgent(agentCmd, workDir, prompt string) error {
-	cmd := exec.Command(agentCmd,
-		"--dangerously-skip-permissions",
-		"-p", prompt,
-	)
+	cmd := exec.Command(agentCmd, buildAgentArgs(prompt, agentDangerouslySkipPermissions)...)
 	cmd.Dir = workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -367,4 +372,5 @@ func runAgent(agentCmd, workDir, prompt string) error {
 func init() {
 	maintainCmd.Flags().StringVar(&maintainEntity, "entity", "", "Maintain a single entity (e.g., --entity storage)")
 	maintainCmd.Flags().BoolVar(&maintainDryRun, "dry-run", false, "Generate context packages without invoking the agent")
+	maintainCmd.Flags().BoolVar(&agentDangerouslySkipPermissions, "dangerously-skip-permissions", false, "Pass --dangerously-skip-permissions to the configured agent")
 }
