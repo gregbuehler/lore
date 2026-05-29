@@ -24,6 +24,28 @@ func Connect() (*Client, error) {
 	return &Client{conn: conn}, nil
 }
 
+// ConnectForVault connects only when the running daemon serves vaultPath.
+func ConnectForVault(vaultPath string) (*Client, error) {
+	vaultPath = normalizeVaultPath(vaultPath)
+	c, err := Connect()
+	if err != nil {
+		return nil, err
+	}
+	if vaultPath == "" {
+		return c, nil
+	}
+	matches, err := clientServesVault(c, vaultPath)
+	if err != nil {
+		c.Close()
+		return nil, err
+	}
+	if !matches {
+		c.Close()
+		return nil, fmt.Errorf("daemon is serving a different vault")
+	}
+	return c, nil
+}
+
 // Close closes the client connection.
 func (c *Client) Close() error {
 	return c.conn.Close()
