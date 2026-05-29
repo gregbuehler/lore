@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gbuehler/lore/internal/parse"
 	"github.com/gbuehler/lore/internal/pathutil"
 )
 
@@ -91,7 +92,7 @@ func (d *Daemon) dispatchEntityUpdate(req *Request) *Response {
 
 	// Apply set_fields to frontmatter
 	for key, val := range req.SetFields {
-		content, err = setFrontmatterField(content, key, val)
+		content, err = parse.SetFrontmatterField(content, key, val)
 		if err != nil {
 			return &Response{OK: false, Error: fmt.Sprintf("updating frontmatter key %q: %v", key, err)}
 		}
@@ -271,38 +272,6 @@ func buildEntityContent(entityType, title, today string) string {
 	sb.WriteString("## Change Log\n\n")
 
 	return sb.String()
-}
-
-// setFrontmatterField sets or adds a key in the YAML frontmatter block.
-func setFrontmatterField(content, key, value string) (string, error) {
-	if !strings.HasPrefix(content, "---\n") {
-		return content, fmt.Errorf("file does not begin with YAML frontmatter (---)")
-	}
-
-	end := strings.Index(content[4:], "\n---")
-	if end < 0 {
-		return content, fmt.Errorf("frontmatter closing --- not found")
-	}
-	fmEnd := 4 + end
-	fmBlock := content[4:fmEnd]
-	afterFm := content[fmEnd:]
-
-	lines := strings.Split(fmBlock, "\n")
-	replaced := false
-	for i, line := range lines {
-		if strings.HasPrefix(line, key+":") {
-			lines[i] = fmt.Sprintf("%s: %s", key, value)
-			replaced = true
-			break
-		}
-	}
-
-	if !replaced {
-		lines = append(lines, fmt.Sprintf("%s: %s", key, value))
-	}
-
-	newFm := strings.Join(lines, "\n")
-	return "---\n" + newFm + afterFm, nil
 }
 
 // appendToSection appends text under the named ## section.

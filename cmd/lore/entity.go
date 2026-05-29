@@ -1,7 +1,6 @@
 package lore
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/daemon"
+	"github.com/gbuehler/lore/internal/parse"
 	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/gbuehler/lore/internal/store"
 	"github.com/spf13/cobra"
@@ -259,7 +259,7 @@ Examples:
 
 		// Apply --set key=value updates to frontmatter
 		for key, val := range setFields {
-			content, err = setFrontmatterField(content, key, val)
+			content, err = parse.SetFrontmatterField(content, key, val)
 			if err != nil {
 				return fmt.Errorf("updating frontmatter key %q: %w", key, err)
 			}
@@ -296,43 +296,6 @@ Examples:
 		fmt.Printf("updated: %s\n", filePath)
 		return nil
 	},
-}
-
-// setFrontmatterField sets or adds a key in the YAML frontmatter block.
-// The frontmatter is delimited by leading and trailing `---` lines.
-func setFrontmatterField(content, key, value string) (string, error) {
-	if !strings.HasPrefix(content, "---\n") {
-		return content, fmt.Errorf("file does not begin with YAML frontmatter (---)")
-	}
-
-	end := strings.Index(content[4:], "\n---")
-	if end < 0 {
-		return content, fmt.Errorf("frontmatter closing --- not found")
-	}
-	// Absolute end of the frontmatter block (the \n before ---)
-	fmEnd := 4 + end // index of \n before closing ---
-	fmBlock := content[4:fmEnd]
-	afterFm := content[fmEnd:] // starts with \n---
-
-	// Try to replace an existing key
-	lines := strings.Split(fmBlock, "\n")
-	replaced := false
-	for i, line := range lines {
-		// Match "key:" or "key: ..." at start of line (not indented — top-level only)
-		if strings.HasPrefix(line, key+":") {
-			lines[i] = fmt.Sprintf("%s: %s", key, value)
-			replaced = true
-			break
-		}
-	}
-
-	if !replaced {
-		// Append before closing ---
-		lines = append(lines, fmt.Sprintf("%s: %s", key, value))
-	}
-
-	newFm := strings.Join(lines, "\n")
-	return "---\n" + newFm + afterFm, nil
 }
 
 // appendToSection appends text under the named ## section.
@@ -463,7 +426,7 @@ Examples:
 }
 
 func runEntityGetJSON(entityPath, content, vaultPath string) error {
-	fm := parseFrontmatter(content)
+	fm := parse.ParseFrontmatterMap(content)
 	fm["path"] = entityPath
 
 	result := map[string]any{
@@ -496,38 +459,6 @@ func runEntityGetJSON(entityPath, content, vaultPath string) error {
 	}
 
 	return json.NewEncoder(os.Stdout).Encode(result)
-}
-
-// parseFrontmatter extracts top-level scalar key: value pairs from YAML frontmatter.
-func parseFrontmatter(content string) map[string]any {
-	fm := make(map[string]any)
-	if !strings.HasPrefix(content, "---\n") {
-		return fm
-	}
-	end := strings.Index(content[4:], "\n---")
-	if end < 0 {
-		return fm
-	}
-	block := content[4 : 4+end]
-	scanner := bufio.NewScanner(strings.NewReader(block))
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
-			continue // skip indented (list/map values)
-		}
-		idx := strings.Index(line, ":")
-		if idx < 0 {
-			continue
-		}
-		key := strings.TrimSpace(line[:idx])
-		val := strings.TrimSpace(line[idx+1:])
-		// Strip surrounding quotes
-		if len(val) >= 2 && ((val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'')) {
-			val = val[1 : len(val)-1]
-		}
-		fm[key] = val
-	}
-	return fm
 }
 
 // --------------------------------------------------------------------------
@@ -703,10 +634,10 @@ func runEntityListFileWalk() error {
 			return nil
 		}
 
-		fm := parseFrontmatter(string(data))
-		entityType, _ := fm["entity_type"].(string)
-		title, _ := fm["title"].(string)
-		lastUpdated, _ := fm["last_updated"].(string)
+		fm := parse.ParseFrontmatterMap(string(data))
+		entityType := frontmatterString(fm["entity_type"])
+		title := frontmatterString(fm["title"])
+		lastUpdated := frontmatterString(fm["last_updated"])
 
 		if entityListType != "" && !strings.EqualFold(entityType, entityListType) {
 			return nil
@@ -769,6 +700,13 @@ func printEntityList(results []daemon.Result) {
 // --------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------
+
+func frontmatterString(value any) string {
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprint(value)
+}
 
 // resolveEntityVault returns an absolute vault path, preferring the flag
 // value, then LORE_VAULT env, then config.FindVault().
