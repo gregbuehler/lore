@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +17,10 @@ import (
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/index"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
+
+var watchHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 var watchEntity string
 var watchDryRun bool
@@ -244,15 +248,15 @@ Examples:
 
 // sourceConfig represents a source repo declaration from library.yaml.
 type sourceConfig struct {
-	Repo  string        // e.g. "git.example.com/myorg/deployment"
-	Local string        // e.g. "~/src/git.example.com/myorg/deployment"
-	Watch []watchConfig // what to watch in this repo
+	Repo  string        `yaml:"repo"`  // e.g. "git.example.com/myorg/deployment"
+	Local string        `yaml:"local"` // e.g. "~/src/git.example.com/myorg/deployment"
+	Watch []watchConfig `yaml:"watch"` // what to watch in this repo
 }
 
 // watchConfig describes a path pattern to watch within a source repo.
 type watchConfig struct {
-	Path   string // e.g. "deployments/{entity}/**" or "deployments/{prefix}-{entity}/**"
-	MapsTo string // entity type this maps to
+	Path   string `yaml:"path"`    // e.g. "deployments/{entity}/**" or "deployments/{prefix}-{entity}/**"
+	MapsTo string `yaml:"maps_to"` // entity type this maps to
 }
 
 // repoChange represents a single commit affecting an entity's source files.
@@ -282,87 +286,13 @@ func loadSources(libPath string) []sourceConfig {
 	if err != nil {
 		return nil
 	}
-
-	var sources []sourceConfig
-	var current *sourceConfig
-	var currentWatch *watchConfig
-	inSources := false
-	inWatch := false
-
-	for _, line := range strings.Split(string(raw), "\n") {
-		trimmed := strings.TrimSpace(line)
-
-		// Detect sources: block
-		if trimmed == "sources:" {
-			inSources = true
-			inWatch = false
-			continue
-		}
-
-		// Exit on next top-level key
-		if inSources && len(line) > 0 && line[0] != ' ' && line[0] != '\t' && !strings.HasPrefix(trimmed, "#") {
-			break
-		}
-
-		if !inSources {
-			continue
-		}
-
-		// New source entry: "  - repo: ..."
-		if strings.HasPrefix(trimmed, "- repo:") {
-			if current != nil {
-				if currentWatch != nil {
-					current.Watch = append(current.Watch, *currentWatch)
-					currentWatch = nil
-				}
-				sources = append(sources, *current)
-			}
-			current = &sourceConfig{
-				Repo: stripYAMLQuotes(strings.TrimPrefix(trimmed, "- repo:")),
-			}
-			inWatch = false
-			continue
-		}
-
-		if current == nil {
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "local:") {
-			current.Local = stripYAMLQuotes(strings.TrimPrefix(trimmed, "local:"))
-			continue
-		}
-
-		if trimmed == "watch:" {
-			inWatch = true
-			continue
-		}
-
-		if inWatch && strings.HasPrefix(trimmed, "- path:") {
-			if currentWatch != nil {
-				current.Watch = append(current.Watch, *currentWatch)
-			}
-			currentWatch = &watchConfig{
-				Path: stripYAMLQuotes(strings.TrimPrefix(trimmed, "- path:")),
-			}
-			continue
-		}
-
-		if inWatch && currentWatch != nil && strings.HasPrefix(trimmed, "maps_to:") {
-			currentWatch.MapsTo = stripYAMLQuotes(strings.TrimPrefix(trimmed, "maps_to:"))
-			continue
-		}
+	var library struct {
+		Sources []sourceConfig `yaml:"sources"`
 	}
-
-	// Flush last entries
-	if current != nil {
-		if currentWatch != nil {
-			current.Watch = append(current.Watch, *currentWatch)
-		}
-		sources = append(sources, *current)
+	if err := yaml.Unmarshal(raw, &library); err != nil {
+		return nil
 	}
-
-	return sources
+	return library.Sources
 }
 
 // resolveSourcePath finds the local checkout of a source repo.
@@ -563,18 +493,20 @@ func apiLogChanges(repoID, dir, since, token string) []repoChange {
 		apiBase = fmt.Sprintf("https://%s/api/v3", host)
 	}
 
-	// GET /repos/{owner}/{repo}/commits?path={dir}&since={date}
-	url := fmt.Sprintf("%s/repos/%s/%s/commits?path=%s&since=%sT00:00:00Z&per_page=100",
-		apiBase, owner, repo, dir, since)
+	apiURL, err := buildGitHubCommitsURL(apiBase, owner, repo, dir, since)
+	if err != nil {
+		fmt.Printf("    API URL error for %s/%s path %s: %v\n", owner, repo, dir, err)
+		return nil
+	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return nil
 	}
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := watchHTTPClient.Do(req)
 	if err != nil {
 		fmt.Printf("    API error for %s/%s path %s: %v\n", owner, repo, dir, err)
 		return nil
@@ -640,6 +572,22 @@ func apiLogChanges(repoID, dir, since, token string) []repoChange {
 	}
 
 	return changes
+}
+
+func buildGitHubCommitsURL(apiBase, owner, repo, dir, since string) (string, error) {
+	base, err := url.Parse(apiBase)
+	if err != nil {
+		return "", err
+	}
+	root := strings.TrimRight(base.Path, "/")
+	base.Path = root + "/repos/" + owner + "/" + repo + "/commits"
+	base.RawPath = root + "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(repo) + "/commits"
+	q := base.Query()
+	q.Set("path", dir)
+	q.Set("since", since+"T00:00:00Z")
+	q.Set("per_page", "100")
+	base.RawQuery = q.Encode()
+	return base.String(), nil
 }
 
 // buildWatchContextPackage assembles the context for agent-driven updates
