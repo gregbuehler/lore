@@ -86,7 +86,7 @@ For Codex-based vaults, the same generated `.lore/LORE.md` is imported from `AGE
 
 ```bash
 lore vault status              # see what you're subscribed to
-lore search "authx mTLS"       # legacy search (pre-daemon)
+lore search "authx mTLS"       # raw grep-style markdown search
 lore library skills             # list available skills
 ```
 
@@ -133,7 +133,7 @@ lore subscribe <repo|path>     Subscribe to a library
 lore unsubscribe <name>        Unsubscribe from a library
 lore update [name]             Pull latest for all or one library
 lore sync                      Git-pull all libraries + trigger reindex
-lore search <query>            Search across vault + libraries
+lore search <query>            Raw grep-style markdown search
 lore discover                  List available libraries from registries
 ```
 

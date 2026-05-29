@@ -12,9 +12,12 @@ import (
 
 var searchCmd = &cobra.Command{
 	Use:   "search <query>",
-	Short: "Search across vault and subscribed libraries",
-	Long: `Searches markdown content across the vault and all subscribed libraries
-using ripgrep. Falls back to grep if rg is not installed.`,
+	Short: "Raw grep-style markdown search",
+	Long: `Runs a raw markdown text search across the vault and subscribed libraries
+using ripgrep. Falls back to grep if rg is not installed.
+
+For ranked indexed search, graph traversal, JSON output, and daemon-backed
+queries, use 'lore query'.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		query := strings.Join(args, " ")
