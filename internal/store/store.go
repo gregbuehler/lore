@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -253,14 +254,16 @@ func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	var results []SearchResult
 	seen := make(map[string]bool)
 	for rows.Next() {
 		var r SearchResult
 		if err := rows.Scan(&r.Path, &r.RelPath, &r.Title, &r.EntityType, &r.Rank, &r.Snippet, &r.Abstract); err != nil {
-			continue
+			if closeErr := closeRows(rows, "search rows"); closeErr != nil {
+				return nil, fmt.Errorf("scan search result: %w; %v", err, closeErr)
+			}
+			return nil, fmt.Errorf("scan search result: %w", err)
 		}
 		// FTS5 rank is negative (lower = better), flip for display
 		r.Rank = -r.Rank
@@ -270,6 +273,9 @@ func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
 		}
 		seen[r.RelPath] = true
 		results = append(results, r)
+	}
+	if err := closeRows(rows, "search rows"); err != nil {
+		return nil, err
 	}
 	return results, nil
 }
@@ -478,14 +484,21 @@ func (s *Store) HealthCheck() ([]HealthIssue, error) {
 	}
 	for rows.Next() {
 		var target, source string
-		rows.Scan(&target, &source)
+		if err := rows.Scan(&target, &source); err != nil {
+			if closeErr := closeRows(rows, "broken link rows"); closeErr != nil {
+				return nil, fmt.Errorf("scan broken links: %w; %v", err, closeErr)
+			}
+			return nil, fmt.Errorf("scan broken links: %w", err)
+		}
 		issues = append(issues, HealthIssue{
 			IssueType: "broken_link",
 			Title:     fmt.Sprintf("%s → %s (not found)", source, target),
 			RelPath:   source,
 		})
 	}
-	rows.Close()
+	if err := closeRows(rows, "broken link rows"); err != nil {
+		return nil, err
+	}
 
 	// Orphan pages: documents with no incoming or outgoing edges
 	rows, err = s.db.Query(`
@@ -500,18 +513,25 @@ func (s *Store) HealthCheck() ([]HealthIssue, error) {
 		AND d.rel_path NOT LIKE 'Daily Log/%'
 		LIMIT 30`)
 	if err != nil {
-		return issues, err
+		return nil, err
 	}
 	for rows.Next() {
 		var relPath, title string
-		rows.Scan(&relPath, &title)
+		if err := rows.Scan(&relPath, &title); err != nil {
+			if closeErr := closeRows(rows, "orphan rows"); closeErr != nil {
+				return nil, fmt.Errorf("scan orphan pages: %w; %v", err, closeErr)
+			}
+			return nil, fmt.Errorf("scan orphan pages: %w", err)
+		}
 		issues = append(issues, HealthIssue{
 			IssueType: "orphan",
 			Title:     title,
 			RelPath:   relPath,
 		})
 	}
-	rows.Close()
+	if err := closeRows(rows, "orphan rows"); err != nil {
+		return nil, err
+	}
 
 	// Stale pages: entity pages not updated in 90+ days
 	rows, err = s.db.Query(`
@@ -522,18 +542,40 @@ func (s *Store) HealthCheck() ([]HealthIssue, error) {
 		AND rel_path NOT LIKE 'Daily Log/%'
 		LIMIT 20`)
 	if err != nil {
-		return issues, err
+		return nil, err
 	}
 	for rows.Next() {
 		var relPath, title, lastUpdated string
-		rows.Scan(&relPath, &title, &lastUpdated)
+		if err := rows.Scan(&relPath, &title, &lastUpdated); err != nil {
+			if closeErr := closeRows(rows, "stale rows"); closeErr != nil {
+				return nil, fmt.Errorf("scan stale pages: %w; %v", err, closeErr)
+			}
+			return nil, fmt.Errorf("scan stale pages: %w", err)
+		}
 		issues = append(issues, HealthIssue{
 			IssueType: "stale",
 			Title:     fmt.Sprintf("%s (last updated: %s)", title, lastUpdated),
 			RelPath:   relPath,
 		})
 	}
-	rows.Close()
+	if err := closeRows(rows, "stale rows"); err != nil {
+		return nil, err
+	}
 
 	return issues, nil
+}
+
+func closeRows(rows *sql.Rows, context string) error {
+	closeErr := rows.Close()
+	iterErr := rows.Err()
+	if closeErr != nil && iterErr != nil {
+		return fmt.Errorf("%s close/iteration: %w", context, errors.Join(closeErr, iterErr))
+	}
+	if closeErr != nil {
+		return fmt.Errorf("%s close: %w", context, closeErr)
+	}
+	if iterErr != nil {
+		return fmt.Errorf("%s iteration: %w", context, iterErr)
+	}
+	return nil
 }
