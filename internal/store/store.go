@@ -271,6 +271,44 @@ func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
 	return results, nil
 }
 
+// ListEntities returns indexed Wiki documents, optionally filtered by entity type.
+func (s *Store) ListEntities(entityType string, limit int) ([]SearchResult, error) {
+	if limit <= 0 {
+		limit = 2000
+	}
+
+	q := `
+		SELECT path, rel_path, title, entity_type, abstract
+		FROM documents
+		WHERE rel_path LIKE 'Wiki/%'`
+	args := []any{}
+	if entityType != "" {
+		q += " AND lower(entity_type) = lower(?)"
+		args = append(args, entityType)
+	}
+	q += " ORDER BY rel_path LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.Path, &r.RelPath, &r.Title, &r.EntityType, &r.Abstract); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
 // Neighbors returns outgoing edges from a node.
 func (s *Store) Neighbors(node string, edgeType string, depth int) ([]GraphResult, error) {
 	if depth <= 0 {

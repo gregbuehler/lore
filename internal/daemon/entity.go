@@ -206,26 +206,13 @@ func (d *Daemon) dispatchEntityDelete(req *Request) *Response {
 
 // dispatchEntityList queries the store for Wiki/* documents, optionally filtered by entity_type.
 func (d *Daemon) dispatchEntityList(req *Request) *Response {
-	// Use a broad search to pull Wiki documents. We search for "Wiki" to match paths,
-	// but we need all docs — use a wildcard-style approach by listing via search with
-	// a high limit and filtering by path prefix.
-	results, err := d.state.Store.Search("", 2000)
+	results, err := d.state.Store.ListEntities(req.EntityType, 2000)
 	if err != nil {
-		// Empty query may not be supported — fall back to type-filtered search
-		results, err = d.state.Store.Search("wiki", 2000)
-		if err != nil {
-			return &Response{OK: false, Error: fmt.Sprintf("listing entities: %v", err)}
-		}
+		return &Response{OK: false, Error: fmt.Sprintf("listing entities: %v", err)}
 	}
 
 	out := make([]Result, 0, len(results))
 	for _, r := range results {
-		if !strings.HasPrefix(r.RelPath, "Wiki/") {
-			continue
-		}
-		if req.EntityType != "" && !strings.EqualFold(r.EntityType, req.EntityType) {
-			continue
-		}
 		out = append(out, Result{
 			Path:       r.Path,
 			RelPath:    strings.TrimSuffix(r.RelPath, ".md"),
