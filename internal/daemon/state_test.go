@@ -3,6 +3,7 @@ package daemon
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/gbuehler/lore/internal/store"
@@ -57,5 +58,36 @@ func TestIndexFileClearsOutgoingEdgesWhenWikilinksRemoved(t *testing.T) {
 	}
 	if len(neighbors) != 0 {
 		t.Fatalf("neighbors after removing last wikilink = %#v, want no outgoing edges", neighbors)
+	}
+}
+
+func TestStateExposesSharedStoreLock(t *testing.T) {
+	state := &State{}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		state.mu.RLock()
+		state.mu.RUnlock()
+	}()
+	go func() {
+		defer wg.Done()
+		state.mu.Lock()
+		state.mu.Unlock()
+	}()
+	wg.Wait()
+}
+
+func TestRootForRequiresPathBoundary(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "vault")
+	state := &State{Paths: []string{root}}
+
+	if got := state.rootFor(filepath.Join(root, "Wiki", "Page.md")); got != root {
+		t.Fatalf("rootFor path inside root = %q, want %q", got, root)
+	}
+
+	if got := state.rootFor(root + "-other/Wiki/Page.md"); got != "" {
+		t.Fatalf("rootFor sibling prefix path = %q, want empty", got)
 	}
 }

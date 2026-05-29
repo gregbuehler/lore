@@ -120,7 +120,9 @@ func (d *Daemon) dispatch(req *Request) *Response {
 		return &Response{OK: true}
 
 	case "status":
+		d.state.mu.RLock()
 		docs, edges, _ := d.state.Store.Stats()
+		d.state.mu.RUnlock()
 		return &Response{
 			OK: true,
 			Stats: &IndexStats{
@@ -137,7 +139,9 @@ func (d *Daemon) dispatch(req *Request) *Response {
 		if limit <= 0 {
 			limit = 10
 		}
+		d.state.mu.RLock()
 		results, err := d.state.Store.Search(req.Query, limit)
+		d.state.mu.RUnlock()
 		if err != nil {
 			return &Response{OK: false, Error: err.Error()}
 		}
@@ -167,7 +171,9 @@ func (d *Daemon) dispatch(req *Request) *Response {
 		if depth <= 0 {
 			depth = 1
 		}
+		d.state.mu.RLock()
 		neighbors, err := d.state.Store.Neighbors(req.Node, req.EdgeType, depth)
+		d.state.mu.RUnlock()
 		if err != nil {
 			return &Response{OK: false, Error: err.Error()}
 		}
@@ -187,7 +193,9 @@ func (d *Daemon) dispatch(req *Request) *Response {
 		if req.Node == "" {
 			return &Response{OK: false, Error: "node is required for backlink queries"}
 		}
+		d.state.mu.RLock()
 		backlinks, err := d.state.Store.Backlinks(req.Node, req.EdgeType)
+		d.state.mu.RUnlock()
 		if err != nil {
 			return &Response{OK: false, Error: err.Error()}
 		}
@@ -210,7 +218,9 @@ func (d *Daemon) dispatch(req *Request) *Response {
 		if err := d.state.BuildIndex(); err != nil {
 			return &Response{OK: false, Error: err.Error()}
 		}
+		d.state.mu.RLock()
 		docs, _, _ := d.state.Store.Stats()
+		d.state.mu.RUnlock()
 		return &Response{
 			OK: true,
 			Results: []Result{{
@@ -246,7 +256,9 @@ func (d *Daemon) dispatch(req *Request) *Response {
 }
 
 func (d *Daemon) dispatchHealth() *Response {
+	d.state.mu.RLock()
 	issues, err := d.state.Store.HealthCheck()
+	d.state.mu.RUnlock()
 	if err != nil {
 		return &Response{OK: false, Error: err.Error()}
 	}
@@ -322,7 +334,9 @@ func (d *Daemon) dispatchContext(req *Request) *Response {
 	b.WriteString("\n\n---\n\n")
 
 	// Outgoing edges (typed relationships)
+	d.state.mu.RLock()
 	neighbors, err := d.state.Store.Neighbors(node, "", depth)
+	d.state.mu.RUnlock()
 	if err == nil && len(neighbors) > 0 {
 		b.WriteString("## Relationships (outgoing)\n\n")
 		byType := groupContextByEdgeType(neighbors)
@@ -344,7 +358,9 @@ func (d *Daemon) dispatchContext(req *Request) *Response {
 	}
 
 	// Incoming edges (backlinks)
+	d.state.mu.RLock()
 	backlinks, err := d.state.Store.Backlinks(node, "")
+	d.state.mu.RUnlock()
 	if err == nil && len(backlinks) > 0 {
 		b.WriteString("## Referenced by\n\n")
 		byType := groupContextByEdgeType(backlinks)
@@ -369,7 +385,9 @@ func (d *Daemon) dispatchContext(req *Request) *Response {
 	}
 
 	// Recent mentions via search
+	d.state.mu.RLock()
 	searchResults, err := d.state.Store.Search(filepath.Base(node), 5)
+	d.state.mu.RUnlock()
 	if err == nil && len(searchResults) > 0 {
 		b.WriteString("## Recent mentions\n\n")
 		for _, r := range searchResults {

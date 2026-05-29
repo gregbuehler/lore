@@ -683,14 +683,7 @@ Examples:
 }
 
 func runEntityListDaemon(client *daemon.Client) error {
-	req := &daemon.Request{
-		Type:  "query",
-		Query: "Wiki",
-		Limit: 500,
-	}
-	if entityListType != "" {
-		req.Filter = map[string]string{"entity_type": entityListType}
-	}
+	req := buildEntityListRequest(entityListType)
 
 	resp, err := client.Send(req)
 	if err != nil {
@@ -700,22 +693,19 @@ func runEntityListDaemon(client *daemon.Client) error {
 		return fmt.Errorf("list error: %s", resp.Error)
 	}
 
-	// Filter to Wiki/* paths only
-	var results []daemon.Result
-	for _, r := range resp.Results {
-		if strings.HasPrefix(r.RelPath, "Wiki/") {
-			if entityListType == "" || strings.EqualFold(r.EntityType, entityListType) {
-				results = append(results, r)
-			}
-		}
-	}
-
 	if entityListJSON {
-		return json.NewEncoder(os.Stdout).Encode(results)
+		return json.NewEncoder(os.Stdout).Encode(resp.Results)
 	}
 
-	printEntityList(results)
+	printEntityList(resp.Results)
 	return nil
+}
+
+func buildEntityListRequest(entityType string) *daemon.Request {
+	return &daemon.Request{
+		Type:       "entity_list",
+		EntityType: entityType,
+	}
 }
 
 type entityListItem struct {

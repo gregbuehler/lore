@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gbuehler/lore/internal/parse"
 	"github.com/gbuehler/lore/internal/resolve"
@@ -17,6 +18,7 @@ type State struct {
 	VaultPath string
 	Paths     []string // all indexed root paths (vault + libraries)
 	resolver  *shortNameResolver
+	mu        sync.RWMutex
 }
 
 // NewState opens the SQLite store and prepares for indexing.
@@ -37,6 +39,12 @@ func NewState(vaultPath string, libraryPaths []string) (*State, error) {
 // BuildIndex walks all configured paths and populates the store.
 // This is a full rebuild — clears existing data first.
 func (s *State) BuildIndex() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buildIndexLocked()
+}
+
+func (s *State) buildIndexLocked() error {
 	if err := s.Store.Clear(); err != nil {
 		return err
 	}
@@ -57,6 +65,9 @@ func (s *State) BuildIndex() error {
 
 // IndexFile parses and indexes a single file (for incremental updates).
 func (s *State) IndexFile(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	root := s.rootFor(path)
 	if root == "" {
 		return nil
@@ -66,6 +77,8 @@ func (s *State) IndexFile(path string) error {
 
 // RemoveFile removes a file from the store.
 func (s *State) RemoveFile(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Store.RemoveDocument(path)
 }
 
@@ -98,7 +111,7 @@ func (s *State) indexPath(root string) error {
 func (s *State) indexSingleFile(path, root string) error {
 	doc, err := parse.ParseDocument(path, root)
 	if err != nil {
-		return nil // skip unparseable files
+		return err
 	}
 
 	// Upsert document
@@ -116,7 +129,7 @@ func (s *State) indexSingleFile(path, root string) error {
 		Abstract:    parse.BuildAbstract(doc),
 	}
 	if err := s.Store.UpsertDocument(storeDoc); err != nil {
-		return nil // skip on error, don't halt walk
+		return err
 	}
 
 	// Build and store edges, resolving short-name and relative targets
@@ -137,7 +150,7 @@ func (s *State) indexSingleFile(path, root string) error {
 		})
 	}
 	if err := s.Store.SetEdges(relKey, edges); err != nil {
-		return nil
+		return err
 	}
 
 	return nil
@@ -145,7 +158,8 @@ func (s *State) indexSingleFile(path, root string) error {
 
 func (s *State) rootFor(path string) string {
 	for _, root := range s.Paths {
-		if strings.HasPrefix(path, root) {
+		rel, err := filepath.Rel(root, path)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
 			return root
 		}
 	}

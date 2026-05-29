@@ -178,7 +178,9 @@ func (d *Daemon) dispatchEntityDelete(req *Request) *Response {
 	}
 
 	// Collect backlinks to report as a warning in the response
+	d.state.mu.RLock()
 	backlinks, _ := d.state.Store.Backlinks(entityPath, "")
+	d.state.mu.RUnlock()
 	var backlinkPaths []string
 	for _, b := range backlinks {
 		backlinkPaths = append(backlinkPaths, b.RelPath)
@@ -206,7 +208,9 @@ func (d *Daemon) dispatchEntityDelete(req *Request) *Response {
 
 // dispatchEntityList queries the store for Wiki/* documents, optionally filtered by entity_type.
 func (d *Daemon) dispatchEntityList(req *Request) *Response {
+	d.state.mu.RLock()
 	results, err := d.state.Store.ListEntities(req.EntityType, 2000)
+	d.state.mu.RUnlock()
 	if err != nil {
 		return &Response{OK: false, Error: fmt.Sprintf("listing entities: %v", err)}
 	}

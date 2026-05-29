@@ -174,7 +174,10 @@ func (s *Store) UpsertDocument(doc *Document) error {
 // RemoveDocument removes a document and its edges from the store.
 func (s *Store) RemoveDocument(path string) error {
 	relPath := ""
-	s.db.QueryRow("SELECT rel_path FROM documents WHERE path = ?", path).Scan(&relPath)
+	err := s.db.QueryRow("SELECT rel_path FROM documents WHERE path = ?", path).Scan(&relPath)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
 
 	if _, err := s.db.Exec("DELETE FROM documents WHERE path = ?", path); err != nil {
 		return err
@@ -346,7 +349,10 @@ func (s *Store) Neighbors(node string, edgeType string, depth int) ([]GraphResul
 		var next []string
 		for rows.Next() {
 			var r GraphResult
-			rows.Scan(&r.RelPath, &r.EdgeType, &r.Title, &r.EntityType)
+			if err := rows.Scan(&r.RelPath, &r.EdgeType, &r.Title, &r.EntityType); err != nil {
+				rows.Close()
+				return results, err
+			}
 			r.Depth = d + 1
 			if !visited[r.RelPath] {
 				visited[r.RelPath] = true
@@ -354,7 +360,12 @@ func (s *Store) Neighbors(node string, edgeType string, depth int) ([]GraphResul
 				results = append(results, r)
 			}
 		}
-		rows.Close()
+		if err := rows.Close(); err != nil {
+			return results, err
+		}
+		if err := rows.Err(); err != nil {
+			return results, err
+		}
 		frontier = next
 	}
 
@@ -382,9 +393,14 @@ func (s *Store) Backlinks(node string, edgeType string) ([]GraphResult, error) {
 	var results []GraphResult
 	for rows.Next() {
 		var r GraphResult
-		rows.Scan(&r.RelPath, &r.EdgeType, &r.Title, &r.EntityType)
+		if err := rows.Scan(&r.RelPath, &r.EdgeType, &r.Title, &r.EntityType); err != nil {
+			return nil, err
+		}
 		r.Depth = 1
 		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return results, nil
 }
