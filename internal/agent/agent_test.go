@@ -1,0 +1,59 @@
+package agent
+
+import (
+	"reflect"
+	"testing"
+
+	"github.com/gbuehler/lore/internal/config"
+)
+
+func TestBuildInvocationClaude(t *testing.T) {
+	inv, err := BuildInvocation(config.AgentConfig{Provider: "claude"}, "/repo", "prompt", Options{})
+	if err != nil {
+		t.Fatalf("BuildInvocation returned error: %v", err)
+	}
+	wantArgs := []string{"-p", "prompt"}
+	if inv.Command != "claude" || !reflect.DeepEqual(inv.Args, wantArgs) || inv.Stdin != "" {
+		t.Fatalf("invocation = %#v", inv)
+	}
+}
+
+func TestBuildInvocationCodexUsesExecAndStdin(t *testing.T) {
+	inv, err := BuildInvocation(config.AgentConfig{Provider: "codex"}, "/repo", "prompt", Options{})
+	if err != nil {
+		t.Fatalf("BuildInvocation returned error: %v", err)
+	}
+	wantArgs := []string{"exec", "--cd", "/repo", "--sandbox", "workspace-write", "--ask-for-approval", "never", "-"}
+	if inv.Command != "codex" || !reflect.DeepEqual(inv.Args, wantArgs) || inv.Stdin != "prompt" {
+		t.Fatalf("invocation = %#v, want args %#v with stdin prompt", inv, wantArgs)
+	}
+}
+
+func TestBuildInvocationCodexDangerousFlag(t *testing.T) {
+	inv, err := BuildInvocation(config.AgentConfig{Provider: "codex"}, "/repo", "prompt", Options{DangerouslySkipPermissions: true})
+	if err != nil {
+		t.Fatalf("BuildInvocation returned error: %v", err)
+	}
+	if !contains(inv.Args, "--dangerously-bypass-approvals-and-sandbox") {
+		t.Fatalf("codex args missing dangerous flag: %#v", inv.Args)
+	}
+}
+
+func TestBuildInvocationInfersCodexFromCommand(t *testing.T) {
+	inv, err := BuildInvocation(config.AgentConfig{Command: "codex"}, "/repo", "prompt", Options{})
+	if err != nil {
+		t.Fatalf("BuildInvocation returned error: %v", err)
+	}
+	if inv.Args[0] != "exec" {
+		t.Fatalf("expected codex exec args, got %#v", inv.Args)
+	}
+}
+
+func contains(items []string, needle string) bool {
+	for _, item := range items {
+		if item == needle {
+			return true
+		}
+	}
+	return false
+}

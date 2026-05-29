@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gbuehler/lore/internal/agent"
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/index"
 	"github.com/spf13/cobra"
@@ -59,7 +60,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		cfg, err := config.Load(vaultPath)
+		cfg, err := config.LoadWithLocal(vaultPath)
 		if err != nil {
 			return err
 		}
@@ -161,10 +162,7 @@ Examples:
 		})
 
 		toneRules := loadToneRules(sub.Path)
-		agentCmd := cfg.Agent.Command
-		if agentCmd == "" {
-			agentCmd = "claude"
-		}
+		agentLabel := agent.Label(cfg.Agent)
 
 		fmt.Printf("Watching %s: %d entities with source changes\n\n", libraryName, len(work))
 
@@ -200,7 +198,7 @@ Examples:
 				continue
 			}
 
-			fmt.Printf("  %s (%d commits) — invoking %s...\n", ew.name, len(ew.changes), agentCmd)
+			fmt.Printf("  %s (%d commits) — invoking %s...\n", ew.name, len(ew.changes), agentLabel)
 
 			prompt := fmt.Sprintf(
 				"Read the context package at %s. It contains the current library page, recent source repository changes, and tone rules. "+
@@ -213,7 +211,7 @@ Examples:
 				pkgPath, pagePath, time.Now().Format("2006-01-02"), pagePath,
 			)
 
-			if err := runAgent(agentCmd, sub.Path, prompt); err != nil {
+			if err := runAgent(cfg.Agent, sub.Path, prompt); err != nil {
 				fmt.Printf("    error: %v\n", err)
 				continue
 			}

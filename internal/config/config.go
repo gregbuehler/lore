@@ -44,9 +44,10 @@ func (c *Config) EffectiveHost() string {
 // git SSH URL using the effective host. Full URLs are returned as-is.
 //
 // Examples (with default_host: "git.example.com"):
-//   "team/my-library"  → "git@git.example.com:team/my-library.git"
-//   "git@host:..."     → returned as-is
-//   "https://..."      → returned as-is
+//
+//	"team/my-library"  → "git@git.example.com:team/my-library.git"
+//	"git@host:..."     → returned as-is
+//	"https://..."      → returned as-is
 func (c *Config) ResolveRepo(ref string) (string, error) {
 	// Already a full URL
 	if strings.HasPrefix(ref, "git@") || strings.HasPrefix(ref, "https://") || strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "ssh://") {
@@ -118,7 +119,15 @@ type SubscriptionConfig struct {
 }
 
 type AgentConfig struct {
-	Command string `yaml:"command,omitempty"`
+	Provider string   `yaml:"provider,omitempty"` // claude, codex, custom, none
+	Command  string   `yaml:"command,omitempty"`
+	Args     []string `yaml:"args,omitempty"`
+	Sandbox  string   `yaml:"sandbox,omitempty"`  // codex: read-only, workspace-write, danger-full-access
+	Approval string   `yaml:"approval,omitempty"` // codex: untrusted, on-request, never
+}
+
+type LocalConfig struct {
+	Agent AgentConfig `yaml:"agent,omitempty"`
 }
 
 type IdentityConfig struct {
@@ -148,6 +157,58 @@ func Load(vaultPath string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	return &cfg, nil
+}
+
+// LoadWithLocal reads shared config.yaml, then applies machine-local and
+// environment overrides. It should be used for runtime behavior, not for
+// read-modify-write operations that save config.yaml.
+func LoadWithLocal(vaultPath string) (*Config, error) {
+	cfg, err := Load(vaultPath)
+	if err != nil {
+		return nil, err
+	}
+	applyLocalOverrides(cfg, vaultPath)
+	applyEnvOverrides(cfg)
+	return cfg, nil
+}
+
+func applyLocalOverrides(cfg *Config, vaultPath string) {
+	data, err := os.ReadFile(filepath.Join(vaultPath, LoreDir, "local.yaml"))
+	if err != nil {
+		return
+	}
+	var local LocalConfig
+	if err := yaml.Unmarshal(data, &local); err != nil {
+		return
+	}
+	mergeAgentConfig(&cfg.Agent, local.Agent)
+}
+
+func applyEnvOverrides(cfg *Config) {
+	mergeAgentConfig(&cfg.Agent, AgentConfig{
+		Provider: os.Getenv("LORE_AGENT_PROVIDER"),
+		Command:  os.Getenv("LORE_AGENT_COMMAND"),
+		Sandbox:  os.Getenv("LORE_AGENT_SANDBOX"),
+		Approval: os.Getenv("LORE_AGENT_APPROVAL"),
+	})
+}
+
+func mergeAgentConfig(dst *AgentConfig, src AgentConfig) {
+	if src.Provider != "" {
+		dst.Provider = src.Provider
+	}
+	if src.Command != "" {
+		dst.Command = src.Command
+	}
+	if len(src.Args) > 0 {
+		dst.Args = src.Args
+	}
+	if src.Sandbox != "" {
+		dst.Sandbox = src.Sandbox
+	}
+	if src.Approval != "" {
+		dst.Approval = src.Approval
+	}
 }
 
 // Save writes the config to a vault's .lore/config.yaml.

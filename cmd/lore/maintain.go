@@ -3,12 +3,12 @@ package lore
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/gbuehler/lore/internal/agent"
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/index"
 	"github.com/spf13/cobra"
@@ -46,7 +46,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		cfg, err := config.Load(vaultPath)
+		cfg, err := config.LoadWithLocal(vaultPath)
 		if err != nil {
 			return err
 		}
@@ -89,11 +89,7 @@ Examples:
 		// Load tone rules
 		toneRules := loadToneRules(sub.Path)
 
-		// Agent command
-		agentCmd := cfg.Agent.Command
-		if agentCmd == "" {
-			agentCmd = "claude"
-		}
+		agentLabel := agent.Label(cfg.Agent)
 
 		// Sort entities by evidence count
 		type entityWork struct {
@@ -143,7 +139,7 @@ Examples:
 				continue
 			}
 
-			fmt.Printf("  %s (%d entries) — invoking %s...\n", ew.name, len(ew.items), agentCmd)
+			fmt.Printf("  %s (%d entries) — invoking %s...\n", ew.name, len(ew.items), agentLabel)
 
 			// Build the agent prompt
 			prompt := fmt.Sprintf(
@@ -156,7 +152,7 @@ Examples:
 				pkgPath, pagePath, time.Now().Format("2006-01-02"), pagePath,
 			)
 
-			if err := runAgent(agentCmd, sub.Path, prompt); err != nil {
+			if err := runAgent(cfg.Agent, sub.Path, prompt); err != nil {
 				fmt.Printf("    error: %v\n", err)
 				continue
 			}
@@ -352,21 +348,10 @@ func loadToneRules(libPath string) string {
 }
 
 // runAgent invokes the configured agent command with a prompt.
-// It uses -p for non-interactive mode; permission bypass is opt-in.
-func buildAgentArgs(prompt string, dangerouslySkipPermissions bool) []string {
-	args := []string{"-p", prompt}
-	if dangerouslySkipPermissions {
-		args = append([]string{"--dangerously-skip-permissions"}, args...)
-	}
-	return args
-}
-
-func runAgent(agentCmd, workDir, prompt string) error {
-	cmd := exec.Command(agentCmd, buildAgentArgs(prompt, agentDangerouslySkipPermissions)...)
-	cmd.Dir = workDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+func runAgent(agentCfg config.AgentConfig, workDir, prompt string) error {
+	return agent.Run(agentCfg, workDir, prompt, agent.Options{
+		DangerouslySkipPermissions: agentDangerouslySkipPermissions,
+	}, os.Stdout, os.Stderr)
 }
 
 func init() {
