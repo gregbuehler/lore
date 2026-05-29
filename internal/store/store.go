@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,15 @@ func DefaultPath() string {
 	return filepath.Join(home, ".local", "share", "lore", "index.db")
 }
 
+// DefaultPathForVault returns the default DB location for a specific vault.
+func DefaultPathForVault(vaultPath string) string {
+	if p := os.Getenv("LORE_DB"); p != "" {
+		return p
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "lore", "vaults", vaultID(vaultPath), "index.db")
+}
+
 // Open opens (or creates) the SQLite store at the given path.
 func Open(dbPath string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
@@ -42,6 +52,19 @@ func Open(dbPath string) (*Store, error) {
 	s := &Store{db: db, path: dbPath}
 	if err := s.migrate(); err != nil {
 		db.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// OpenForVault opens a vault-scoped store and records the vault identity.
+func OpenForVault(dbPath, vaultPath string) (*Store, error) {
+	s, err := Open(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.EnsureVault(vaultPath); err != nil {
+		s.Close()
 		return nil, err
 	}
 	return s, nil
@@ -119,6 +142,10 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(entity_type)`,
 		`CREATE INDEX IF NOT EXISTS idx_documents_root ON documents(root)`,
+		`CREATE TABLE IF NOT EXISTS metadata (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
 	}
 
 	for _, m := range migrations {
@@ -127,6 +154,42 @@ func (s *Store) migrate() error {
 		}
 	}
 	return nil
+}
+
+// EnsureVault records and validates which vault owns this store.
+func (s *Store) EnsureVault(vaultPath string) error {
+	vaultPath = normalizePath(vaultPath)
+	if vaultPath == "" {
+		return fmt.Errorf("vault path is required")
+	}
+	var existing string
+	err := s.db.QueryRow("SELECT value FROM metadata WHERE key = 'vault_path'").Scan(&existing)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("reading store vault metadata: %w", err)
+	}
+	if existing != "" && normalizePath(existing) != vaultPath {
+		return fmt.Errorf("store belongs to vault %s, not %s", existing, vaultPath)
+	}
+	_, err = s.db.Exec("INSERT OR REPLACE INTO metadata (key, value) VALUES ('vault_path', ?)", vaultPath)
+	return err
+}
+
+func vaultID(vaultPath string) string {
+	vaultPath = normalizePath(vaultPath)
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(vaultPath))
+	return fmt.Sprintf("%x", h.Sum64())
+}
+
+func normalizePath(path string) string {
+	if path == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return abs
 }
 
 // Document is the data model for a stored document.

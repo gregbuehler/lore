@@ -74,7 +74,7 @@ Examples:
 			return err
 		}
 
-		db, err := store.Open(store.DefaultPath())
+		db, err := store.OpenForVault(store.DefaultPathForVault(vaultPath), vaultPath)
 		if err != nil {
 			return fmt.Errorf("no index found. Run 'lore daemon start' to build it")
 		}

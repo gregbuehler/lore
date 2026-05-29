@@ -84,7 +84,8 @@ func runDaemonQuery(client *daemon.Client, query string) error {
 }
 
 func runDirectQuery(query string) error {
-	db, err := store.Open(store.DefaultPath())
+	vaultPath := resolveVaultPath()
+	db, err := store.OpenForVault(store.DefaultPathForVault(vaultPath), vaultPath)
 	if err != nil {
 		// No DB yet — hint to run daemon
 		return fmt.Errorf("no index found. Run 'lore daemon start' to build it")
@@ -151,7 +152,8 @@ func runGraphQuery() error {
 	}
 
 	// Direct DB
-	db, err := store.Open(store.DefaultPath())
+	vaultPath := resolveVaultPath()
+	db, err := store.OpenForVault(store.DefaultPathForVault(vaultPath), vaultPath)
 	if err != nil {
 		return fmt.Errorf("no index found. Run 'lore daemon start' to build it")
 	}

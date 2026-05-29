@@ -29,8 +29,9 @@ func Start(vaultPath string, libraryPaths []string) error {
 		return fmt.Errorf("creating socket dir: %w", err)
 	}
 
-	// Remove stale socket
-	os.Remove(SocketPath())
+	if err := prepareSocketPath(SocketPath()); err != nil {
+		return err
+	}
 
 	// Write PID file
 	if err := os.WriteFile(PidPath(), []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644); err != nil {
@@ -93,6 +94,27 @@ func Start(vaultPath string, libraryPaths []string) error {
 		}
 		go d.handleConn(conn)
 	}
+}
+
+func prepareSocketPath(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("checking socket path: %w", err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("refusing to remove non-socket at %s", path)
+	}
+	if c, err := Connect(); err == nil {
+		c.Close()
+		return fmt.Errorf("daemon already running at %s", path)
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("removing stale socket: %w", err)
+	}
+	return nil
 }
 
 func (d *Daemon) handleConn(conn net.Conn) {

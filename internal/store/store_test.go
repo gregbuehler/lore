@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -106,6 +107,28 @@ func TestSearchAndHealthCheckNormalPath(t *testing.T) {
 	}
 	if !hasHealthIssue(issues, "stale", "Wiki/Stale.md") {
 		t.Fatalf("HealthCheck() issues = %#v, want stale Wiki/Stale.md", issues)
+	}
+}
+
+func TestOpenForVaultRejectsMismatchedVault(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	first := filepath.Join(t.TempDir(), "one")
+	second := filepath.Join(t.TempDir(), "two")
+
+	s, err := OpenForVault(dbPath, first)
+	if err != nil {
+		t.Fatalf("OpenForVault first: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("close first store: %v", err)
+	}
+
+	_, err = OpenForVault(dbPath, second)
+	if err == nil {
+		t.Fatal("expected mismatched vault error")
+	}
+	if !strings.Contains(err.Error(), "store belongs to vault") {
+		t.Fatalf("error = %v, want store belongs to vault", err)
 	}
 }
 

@@ -23,7 +23,7 @@ type State struct {
 
 // NewState opens the SQLite store and prepares for indexing.
 func NewState(vaultPath string, libraryPaths []string) (*State, error) {
-	db, err := store.Open(store.DefaultPath())
+	db, err := store.OpenForVault(store.DefaultPathForVault(vaultPath), vaultPath)
 	if err != nil {
 		return nil, err
 	}

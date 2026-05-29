@@ -7,9 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
-	"syscall"
 	"time"
 )
 
@@ -61,10 +58,7 @@ func EnsureDaemon(vaultPath string) (*Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("checking daemon vault: %w", err)
 		}
-		if err := stopDaemonProcess(); err != nil {
-			return nil, fmt.Errorf("daemon is serving a different vault and could not be stopped: %w", err)
-		}
-		waitForSocketShutdown(3 * time.Second)
+		return nil, fmt.Errorf("daemon is serving a different vault; stop it before starting %s", vaultPath)
 	}
 
 	if vaultPath == "" {
@@ -121,37 +115,6 @@ func sameVaultPath(a, b string) bool {
 	a = normalizeVaultPath(a)
 	b = normalizeVaultPath(b)
 	return a != "" && b != "" && a == b
-}
-
-func stopDaemonProcess() error {
-	data, err := os.ReadFile(PidPath())
-	if err != nil {
-		return fmt.Errorf("reading pid file: %w", err)
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return fmt.Errorf("invalid pid file: %w", err)
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return fmt.Errorf("finding process %d: %w", pid, err)
-	}
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		return fmt.Errorf("stopping process %d: %w", pid, err)
-	}
-	return nil
-}
-
-func waitForSocketShutdown(timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if c, err := Connect(); err == nil {
-			c.Close()
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		return
-	}
 }
 
 // SocketPath returns the unix socket path for the daemon.

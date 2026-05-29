@@ -520,7 +520,7 @@ Examples:
 		}
 
 		// Warn about incoming links via direct DB
-		db, dbErr := store.Open(store.DefaultPath())
+		db, dbErr := store.OpenForVault(store.DefaultPathForVault(vaultPath), vaultPath)
 		if dbErr == nil {
 			defer db.Close()
 			backlinks, blErr := db.Backlinks(entityPath, "")
