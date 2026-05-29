@@ -44,7 +44,7 @@ lore subscribe git@git.example.com:team/services.git
 Or subscribe to a local directory:
 
 ```bash
-lore subscribe local:/path/to/library
+lore subscribe /path/to/library --local
 ```
 
 ### 3. Start the daemon

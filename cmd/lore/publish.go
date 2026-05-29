@@ -1,7 +1,9 @@
 package lore
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -12,6 +14,24 @@ import (
 
 var publishVault string
 var publishMessage string
+var publishDryRun bool
+var publishYes bool
+
+type publishChange struct {
+	name   string
+	path   string
+	status string
+}
+
+type publishResult struct {
+	name      string
+	published bool
+	skipped   bool // read-only
+	noChanges bool
+	dryRun    bool
+	output    string
+	err       error
+}
 
 var publishCmd = &cobra.Command{
 	Use:   "publish [library-name]",
@@ -25,6 +45,8 @@ all subscriptions with pending changes are published.
 Examples:
   lore publish
   lore publish my-library
+  lore publish --dry-run
+  lore publish --yes
   lore publish --message "docs: add runbook"
   lore publish --vault ~/notes -m "update content"`,
 	Args: cobra.MaximumNArgs(1),
@@ -54,27 +76,21 @@ Examples:
 			filterName = args[0]
 		}
 
-		type result struct {
-			name      string
-			published bool
-			skipped   bool // read-only
-			noChanges bool
-			output    string
-			err       error
-		}
-
-		var results []result
+		var results []publishResult
+		var changes []publishChange
+		matched := false
 
 		for _, sub := range cfg.Subscriptions {
 			// Apply name filter if provided.
 			if filterName != "" && sub.Name != filterName {
 				continue
 			}
+			matched = true
 
 			// Skip read-only subscriptions.
 			if strings.EqualFold(sub.Access, "read-only") {
 				fmt.Printf("  skipping %s (read-only)\n", sub.Name)
-				results = append(results, result{name: sub.Name, skipped: true})
+				results = append(results, publishResult{name: sub.Name, skipped: true})
 				continue
 			}
 
@@ -82,7 +98,7 @@ Examples:
 			statusCmd := exec.Command("git", "-C", sub.Path, "status", "--porcelain")
 			statusOut, statusErr := statusCmd.Output()
 			if statusErr != nil {
-				results = append(results, result{
+				results = append(results, publishResult{
 					name:   sub.Name,
 					output: strings.TrimSpace(string(statusOut)),
 					err:    fmt.Errorf("git status: %w", statusErr),
@@ -92,59 +108,51 @@ Examples:
 
 			if strings.TrimSpace(string(statusOut)) == "" {
 				fmt.Printf("  skipping %s (nothing to publish)\n", sub.Name)
-				results = append(results, result{name: sub.Name, noChanges: true})
+				results = append(results, publishResult{name: sub.Name, noChanges: true})
 				continue
 			}
 
-			fmt.Printf("  publishing %s...\n", sub.Name)
-
-			// Stage all changes.
-			addCmd := exec.Command("git", "-C", sub.Path, "add", "-A")
-			if out, err := addCmd.CombinedOutput(); err != nil {
-				results = append(results, result{
-					name:   sub.Name,
-					output: strings.TrimSpace(string(out)),
-					err:    fmt.Errorf("git add: %w", err),
-				})
-				continue
-			}
-
-			// Commit.
-			commitCmd := exec.Command("git", "-C", sub.Path, "commit", "-m", publishMessage)
-			if out, err := commitCmd.CombinedOutput(); err != nil {
-				results = append(results, result{
-					name:   sub.Name,
-					output: strings.TrimSpace(string(out)),
-					err:    fmt.Errorf("git commit: %w", err),
-				})
-				continue
-			}
-
-			// Push.
-			pushCmd := exec.Command("git", "-C", sub.Path, "push")
-			out, err := pushCmd.CombinedOutput()
-			output := strings.TrimSpace(string(out))
-
-			if err != nil {
-				results = append(results, result{
-					name:   sub.Name,
-					output: output,
-					err:    fmt.Errorf("git push: %w", err),
-				})
-				continue
-			}
-
-			results = append(results, result{name: sub.Name, published: true, output: output})
+			changes = append(changes, publishChange{
+				name:   sub.Name,
+				path:   sub.Path,
+				status: string(statusOut),
+			})
 		}
 
 		// If a specific library was requested but never matched, report it.
-		if filterName != "" && len(results) == 0 {
+		if filterName != "" && !matched {
 			return fmt.Errorf("no subscription named %q", filterName)
+		}
+
+		if len(changes) > 0 {
+			fmt.Print(formatPublishStatuses(changes))
+
+			if publishDryRun {
+				for _, change := range changes {
+					results = append(results, publishResult{name: change.name, dryRun: true})
+				}
+			} else {
+				if !publishYes {
+					ok, err := confirmPublish(cmd.InOrStdin(), cmd.OutOrStdout())
+					if err != nil {
+						return fmt.Errorf("reading confirmation: %w", err)
+					}
+					if !ok {
+						fmt.Fprintln(cmd.OutOrStdout(), "Publish canceled.")
+						return nil
+					}
+				}
+
+				for _, change := range changes {
+					fmt.Printf("  publishing %s...\n", change.name)
+					results = append(results, publishLibrary(change.name, change.path))
+				}
+			}
 		}
 
 		// Print summary.
 		fmt.Println()
-		var published, skipped, failed int
+		var published, skipped, failed, dryRun int
 		for _, r := range results {
 			switch {
 			case r.err != nil:
@@ -158,12 +166,19 @@ Examples:
 				skipped++
 			case r.noChanges:
 				fmt.Printf("  OK    %s (nothing to publish)\n", r.name)
+			case r.dryRun:
+				fmt.Printf("  DRY   %s (would publish)\n", r.name)
+				dryRun++
 			case r.published:
 				fmt.Printf("  OK    %s (published)\n", r.name)
 				published++
 			}
 		}
-		fmt.Printf("\n%d published, %d skipped (read-only), %d failed.\n", published, skipped, failed)
+		fmt.Printf("\n%d published, %d would publish, %d skipped (read-only), %d failed.\n", published, dryRun, skipped, failed)
+
+		if publishDryRun {
+			return nil
+		}
 
 		// Trigger reindex if daemon is running.
 		client, err := daemon.Connect()
@@ -190,4 +205,70 @@ Examples:
 func init() {
 	publishCmd.Flags().StringVar(&publishVault, "vault", "", "Path to vault (auto-detected if omitted)")
 	publishCmd.Flags().StringVarP(&publishMessage, "message", "m", "lore: update content", "Commit message")
+	publishCmd.Flags().BoolVar(&publishDryRun, "dry-run", false, "Show what would be published without staging, committing, or pushing")
+	publishCmd.Flags().BoolVarP(&publishYes, "yes", "y", false, "Publish without interactive confirmation")
+}
+
+func formatPublishStatuses(changes []publishChange) string {
+	var b strings.Builder
+	b.WriteString("Pending changes to publish:\n")
+	for _, change := range changes {
+		fmt.Fprintf(&b, "  %s (%s)\n", change.name, change.path)
+		for _, line := range strings.Split(strings.TrimRight(change.status, "\n"), "\n") {
+			if line == "" {
+				continue
+			}
+			fmt.Fprintf(&b, "  %s\n", line)
+		}
+	}
+	return b.String()
+}
+
+func confirmPublish(in io.Reader, out io.Writer) (bool, error) {
+	fmt.Fprint(out, "Publish these changes? [y/N] ")
+
+	answer, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && answer == "" {
+		return false, err
+	}
+
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes", nil
+}
+
+func publishLibrary(name, path string) publishResult {
+	// Stage all changes.
+	addCmd := exec.Command("git", "-C", path, "add", "-A")
+	if out, err := addCmd.CombinedOutput(); err != nil {
+		return publishResult{
+			name:   name,
+			output: strings.TrimSpace(string(out)),
+			err:    fmt.Errorf("git add: %w", err),
+		}
+	}
+
+	// Commit.
+	commitCmd := exec.Command("git", "-C", path, "commit", "-m", publishMessage)
+	if out, err := commitCmd.CombinedOutput(); err != nil {
+		return publishResult{
+			name:   name,
+			output: strings.TrimSpace(string(out)),
+			err:    fmt.Errorf("git commit: %w", err),
+		}
+	}
+
+	// Push.
+	pushCmd := exec.Command("git", "-C", path, "push")
+	out, err := pushCmd.CombinedOutput()
+	output := strings.TrimSpace(string(out))
+
+	if err != nil {
+		return publishResult{
+			name:   name,
+			output: output,
+			err:    fmt.Errorf("git push: %w", err),
+		}
+	}
+
+	return publishResult{name: name, published: true, output: output}
 }
