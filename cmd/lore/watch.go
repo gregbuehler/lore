@@ -167,6 +167,11 @@ Examples:
 
 		fmt.Printf("Watching %s: %d entities with source changes\n\n", libraryName, len(work))
 
+		if !watchDryRun && agentSynthesisDisabled(agentCfg) {
+			fmt.Println("Agent synthesis disabled by provider none; stopping before package generation.")
+			return nil
+		}
+
 		incomingDir := filepath.Join(sub.Path, "sources", "incoming")
 		os.MkdirAll(incomingDir, 0755)
 
