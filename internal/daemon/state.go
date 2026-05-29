@@ -136,8 +136,8 @@ func (s *State) indexSingleFile(path, root string) error {
 			Source: wl.Source,
 		})
 	}
-	if len(edges) > 0 {
-		s.Store.SetEdges(relKey, edges)
+	if err := s.Store.SetEdges(relKey, edges); err != nil {
+		return nil
 	}
 
 	return nil
