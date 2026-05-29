@@ -3,6 +3,8 @@ package lore
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/index"
@@ -43,10 +45,12 @@ Use 'lore status' to see your subscriptions and their names.`,
 
 		sub := cfg.Subscriptions[found]
 
-		// Remove local clone
-		fmt.Printf("Removing %s (%s)...\n", sub.Name, sub.Path)
-		if err := os.RemoveAll(sub.Path); err != nil {
-			return fmt.Errorf("removing library directory: %w", err)
+		msg, err := removeSubscriptionFiles(sub, config.LibrariesDir())
+		if err != nil {
+			return err
+		}
+		if msg != "" {
+			fmt.Println(msg)
 		}
 
 		// Remove from config
@@ -63,4 +67,36 @@ Use 'lore status' to see your subscriptions and their names.`,
 		fmt.Printf("Unsubscribed from %s\n", sub.Name)
 		return nil
 	},
+}
+
+func removeSubscriptionFiles(sub config.SubscriptionConfig, managedDir string) (string, error) {
+	if strings.HasPrefix(sub.Repo, "local:") {
+		return fmt.Sprintf("Keeping %s (%s): local subscription", sub.Name, sub.Path), nil
+	}
+
+	absManaged, err := filepath.Abs(managedDir)
+	if err != nil {
+		return "", fmt.Errorf("resolving managed libraries directory: %w", err)
+	}
+	absPath, err := filepath.Abs(sub.Path)
+	if err != nil {
+		return "", fmt.Errorf("resolving subscription path: %w", err)
+	}
+	checkPath := absPath
+	if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
+		checkPath = resolved
+	}
+
+	rel, err := filepath.Rel(absManaged, checkPath)
+	if err != nil {
+		return "", fmt.Errorf("checking subscription path: %w", err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return fmt.Sprintf("Keeping %s (%s): outside managed libraries directory", sub.Name, sub.Path), nil
+	}
+
+	if err := os.RemoveAll(absPath); err != nil {
+		return "", fmt.Errorf("removing library directory: %w", err)
+	}
+	return fmt.Sprintf("Removed %s (%s)", sub.Name, absPath), nil
 }
