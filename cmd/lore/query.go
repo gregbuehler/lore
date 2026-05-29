@@ -50,15 +50,8 @@ Examples:
 		}
 		query := strings.Join(args, " ")
 
-		// Try daemon, auto-starting if possible
-		client, err := daemon.Connect()
-		if err != nil {
-			// Daemon not running — try auto-start
-			vaultPath := resolveVaultPath()
-			if vaultPath != "" {
-				client, err = daemon.EnsureDaemon(vaultPath)
-			}
-		}
+		// Try daemon, auto-starting if possible.
+		client, err := connectDaemonForCurrentVault()
 		if err == nil {
 			defer client.Close()
 			return runDaemonQuery(client, query)
@@ -137,14 +130,8 @@ func runGraphQuery() error {
 		reqType = "backlinks"
 	}
 
-	// Try daemon, auto-starting if possible
-	client, err := daemon.Connect()
-	if err != nil {
-		vaultPath := resolveVaultPath()
-		if vaultPath != "" {
-			client, err = daemon.EnsureDaemon(vaultPath)
-		}
-	}
+	// Try daemon, auto-starting if possible.
+	client, err := connectDaemonForCurrentVault()
 	if err == nil {
 		defer client.Close()
 		req := &daemon.Request{

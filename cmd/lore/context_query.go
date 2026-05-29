@@ -36,14 +36,8 @@ Examples:
 		// Strip .md if provided
 		node = strings.TrimSuffix(node, ".md")
 
-		// Try daemon first (like query.go does)
-		client, err := daemon.Connect()
-		if err != nil {
-			vaultPath := resolveVaultPath()
-			if vaultPath != "" {
-				client, err = daemon.EnsureDaemon(vaultPath)
-			}
-		}
+		// Try daemon first (like query.go does).
+		client, err := connectDaemonForCurrentVault()
 		if err == nil {
 			defer client.Close()
 			resp, err := client.Send(&daemon.Request{

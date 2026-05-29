@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/gbuehler/lore/internal/config"
-	"github.com/gbuehler/lore/internal/daemon"
 	"github.com/gbuehler/lore/internal/tui"
 )
 
@@ -24,14 +23,7 @@ The daemon will be auto-started if a vault is found.`,
 }
 
 func runTUI(cmd *cobra.Command, args []string) error {
-	client, err := daemon.Connect()
-	if err != nil {
-		// Daemon not running — try auto-start if we can find a vault
-		vaultPath := resolveTUIVaultPath()
-		if vaultPath != "" {
-			client, err = daemon.EnsureDaemon(vaultPath)
-		}
-	}
+	client, err := connectDaemonForCurrentVault()
 	if err != nil {
 		return fmt.Errorf("cannot connect to daemon: %w\nRun 'lore daemon start' first", err)
 	}

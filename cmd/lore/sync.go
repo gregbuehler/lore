@@ -91,8 +91,8 @@ Examples:
 		}
 		fmt.Printf("\n%d updated, %d failed.\n", updated, failed)
 
-		// Trigger reindex if daemon is running
-		client, err := daemon.Connect()
+		// Trigger reindex if the daemon for this vault is running.
+		client, err := daemon.EnsureDaemon(vaultPath)
 		if err != nil {
 			// Daemon not running — that's fine
 			return nil

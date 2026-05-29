@@ -88,14 +88,8 @@ Examples:
 			return fmt.Errorf("unknown entity type %q; valid types: service, environment, person, tool, infrastructure, organization, customer, vendor, concept", entityCreateType)
 		}
 
-		// Try daemon first
-		client, err := daemon.Connect()
-		if err != nil {
-			vaultPath := resolveVaultPath()
-			if vaultPath != "" {
-				client, err = daemon.EnsureDaemon(vaultPath)
-			}
-		}
+		// Try daemon first.
+		client, err := connectDaemonForCurrentVault()
 		if err == nil {
 			defer client.Close()
 			resp, err := client.Send(&daemon.Request{
@@ -222,14 +216,8 @@ Examples:
 		needsFallback := len(entityUpdateAppendSection) > 0
 
 		if !needsFallback {
-			// Try daemon first
-			client, err := daemon.Connect()
-			if err != nil {
-				vaultPath := resolveVaultPath()
-				if vaultPath != "" {
-					client, err = daemon.EnsureDaemon(vaultPath)
-				}
-			}
+			// Try daemon first.
+			client, err := connectDaemonForCurrentVault()
 			if err == nil {
 				defer client.Close()
 				resp, err := client.Send(&daemon.Request{
@@ -421,14 +409,8 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		entityPath := strings.TrimSuffix(args[0], ".md")
 
-		// Try daemon first for content retrieval
-		client, err := daemon.Connect()
-		if err != nil {
-			vaultPath := resolveVaultPath()
-			if vaultPath != "" {
-				client, err = daemon.EnsureDaemon(vaultPath)
-			}
-		}
+		// Try daemon first for content retrieval.
+		client, err := connectDaemonForCurrentVault()
 		var content string
 		if err == nil {
 			defer client.Close()
@@ -488,14 +470,8 @@ func runEntityGetJSON(entityPath, content, vaultPath string) error {
 		"frontmatter": fm,
 	}
 
-	// Try daemon for relationships
-	client, err := daemon.Connect()
-	if err != nil {
-		v := resolveVaultPath()
-		if v != "" {
-			client, err = daemon.EnsureDaemon(v)
-		}
-	}
+	// Try daemon for relationships.
+	client, err := connectDaemonForCurrentVault()
 	if err == nil {
 		defer client.Close()
 
@@ -579,14 +555,8 @@ Examples:
 			return fmt.Errorf("pass --confirm to delete %s", entityPath)
 		}
 
-		// Try daemon first — it handles backlink warnings + index removal atomically
-		client, err := daemon.Connect()
-		if err != nil {
-			v := resolveVaultPath()
-			if v != "" {
-				client, err = daemon.EnsureDaemon(v)
-			}
-		}
+		// Try daemon first — it handles backlink warnings + index removal atomically.
+		client, err := connectDaemonForCurrentVault()
 		if err == nil {
 			defer client.Close()
 			resp, sendErr := client.Send(&daemon.Request{
@@ -664,14 +634,8 @@ Examples:
   lore entity list --json`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Try daemon
-		client, err := daemon.Connect()
-		if err != nil {
-			v := resolveVaultPath()
-			if v != "" {
-				client, err = daemon.EnsureDaemon(v)
-			}
-		}
+		// Try daemon.
+		client, err := connectDaemonForCurrentVault()
 		if err == nil {
 			defer client.Close()
 			return runEntityListDaemon(client)
