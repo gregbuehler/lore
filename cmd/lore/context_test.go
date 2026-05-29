@@ -48,3 +48,46 @@ func TestEnsureCodexImportIsIdempotent(t *testing.T) {
 		t.Fatalf("AGENTS.md did not preserve existing content:\n%s", data)
 	}
 }
+
+func TestResolveContextAgentTargetsAutoUsesExistingProviderFiles(t *testing.T) {
+	vaultPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(vaultPath, ".claude"), 0o755); err != nil {
+		t.Fatalf("mkdir .claude: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(vaultPath, ".claude", "CLAUDE.md"), []byte("# Claude\n"), 0o644); err != nil {
+		t.Fatalf("write CLAUDE.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(vaultPath, "AGENTS.md"), []byte("# Codex\n"), 0o644); err != nil {
+		t.Fatalf("write AGENTS.md: %v", err)
+	}
+
+	targets, err := resolveContextAgentTargets(vaultPath, "codex", "auto")
+	if err != nil {
+		t.Fatalf("resolveContextAgentTargets: %v", err)
+	}
+	if got := strings.Join(targets, ","); got != "claude,codex" {
+		t.Fatalf("targets = %q, want claude,codex", got)
+	}
+}
+
+func TestResolveContextAgentTargetsAutoFallsBackToEffectiveProvider(t *testing.T) {
+	vaultPath := t.TempDir()
+
+	targets, err := resolveContextAgentTargets(vaultPath, "codex", "auto")
+	if err != nil {
+		t.Fatalf("resolveContextAgentTargets: %v", err)
+	}
+	if got := strings.Join(targets, ","); got != "codex" {
+		t.Fatalf("targets = %q, want codex", got)
+	}
+}
+
+func TestResolveContextAgentTargetsExplicitAll(t *testing.T) {
+	targets, err := resolveContextAgentTargets(t.TempDir(), "none", "all")
+	if err != nil {
+		t.Fatalf("resolveContextAgentTargets: %v", err)
+	}
+	if got := strings.Join(targets, ","); got != "claude,codex" {
+		t.Fatalf("targets = %q, want claude,codex", got)
+	}
+}

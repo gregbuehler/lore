@@ -393,4 +393,4 @@ Library CLAUDE.md          ← per-library agent instructions
   excerpt.md               ← per-library self-description
 ```
 
-Run `lore vault context` after subscribing to new libraries or adding skills. It regenerates `.lore/LORE.md` and wires the import into the active provider's context file idempotently: `.claude/CLAUDE.md` for Claude and `AGENTS.md` for Codex.
+Run `lore vault context` after subscribing to new libraries or adding skills. It regenerates `.lore/LORE.md` and wires imports idempotently. By default, it updates existing provider context files (`.claude/CLAUDE.md` and/or `AGENTS.md`); if none exist, it falls back to the effective agent provider. Use `--agent claude`, `--agent codex`, `--agent all`, or `--agent none` to be explicit.

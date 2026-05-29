@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/spf13/cobra"
 )
+
+var contextAgentMode string
 
 var contextCmd = &cobra.Command{
 	Use:   "context",
@@ -24,7 +27,8 @@ For Claude vaults, .claude/CLAUDE.md imports LORE.md so Claude Code loads it
 automatically. For Codex vaults, root AGENTS.md references LORE.md.
 
 Examples:
-  lore vault context     # regenerate .lore/LORE.md`,
+  lore vault context                 # regenerate .lore/LORE.md
+  lore vault context --agent all     # wire both Claude and Codex context files`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		vaultPath, err := config.FindVault()
@@ -44,17 +48,23 @@ Examples:
 		}
 		fmt.Printf("Updated %s\n", lorePath)
 
-		switch effectiveContextProvider(cfg) {
-		case "claude":
-			claudePath := filepath.Join(vaultPath, ".claude", "CLAUDE.md")
-			if err := ensureLoreImport(claudePath); err != nil {
-				fmt.Printf("Note: %v\n", err)
-				fmt.Printf("Add this line to your CLAUDE.md to import lore context:\n")
-				fmt.Printf("  @../.lore/LORE.md\n")
-			}
-		case "codex":
-			if err := ensureCodexImport(vaultPath); err != nil {
-				return err
+		targets, err := resolveContextAgentTargets(vaultPath, effectiveContextProvider(cfg), contextAgentMode)
+		if err != nil {
+			return err
+		}
+		for _, target := range targets {
+			switch target {
+			case "claude":
+				claudePath := filepath.Join(vaultPath, ".claude", "CLAUDE.md")
+				if err := ensureLoreImport(claudePath); err != nil {
+					fmt.Printf("Note: %v\n", err)
+					fmt.Printf("Add this line to your CLAUDE.md to import lore context:\n")
+					fmt.Printf("  @../.lore/LORE.md\n")
+				}
+			case "codex":
+				if err := ensureCodexImport(vaultPath); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -269,6 +279,44 @@ func effectiveContextProvider(cfg *config.Config) string {
 	}
 }
 
+func resolveContextAgentTargets(vaultPath, effectiveProvider, mode string) ([]string, error) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = "auto"
+	}
+	switch mode {
+	case "auto":
+		targets := existingContextAgentTargets(vaultPath)
+		if len(targets) > 0 {
+			return targets, nil
+		}
+		if effectiveProvider == "" || effectiveProvider == "none" || effectiveProvider == "custom" {
+			return nil, nil
+		}
+		return []string{effectiveProvider}, nil
+	case "all":
+		return []string{"claude", "codex"}, nil
+	case "claude", "codex":
+		return []string{mode}, nil
+	case "none":
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported context agent %q (use auto, claude, codex, all, or none)", mode)
+	}
+}
+
+func existingContextAgentTargets(vaultPath string) []string {
+	var targets []string
+	if _, err := os.Stat(filepath.Join(vaultPath, ".claude", "CLAUDE.md")); err == nil {
+		targets = append(targets, "claude")
+	}
+	if _, err := os.Stat(filepath.Join(vaultPath, "AGENTS.md")); err == nil {
+		targets = append(targets, "codex")
+	}
+	sort.Strings(targets)
+	return targets
+}
+
 // ensureLoreImport checks if .claude/CLAUDE.md already imports LORE.md.
 // If not, appends the import directive.
 func ensureLoreImport(claudePath string) error {
@@ -327,4 +375,5 @@ func ensureCodexImport(vaultPath string) error {
 }
 
 func init() {
+	contextCmd.Flags().StringVar(&contextAgentMode, "agent", "auto", "Agent context file to wire: auto, claude, codex, all, or none")
 }
