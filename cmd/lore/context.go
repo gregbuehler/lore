@@ -13,15 +13,15 @@ import (
 
 var contextCmd = &cobra.Command{
 	Use:   "context",
-	Short: "Generate .lore/LORE.md and wire it into .claude/CLAUDE.md",
+	Short: "Generate .lore/LORE.md and wire it into agent instructions",
 	Long: `Generates .lore/LORE.md with library discovery context: subscribed
 libraries, available skills, watched repos, and lore CLI commands.
 
 Each library publishes its own excerpt.md (via 'lore library index').
 This command embeds those excerpts into LORE.md.
 
-If .claude/CLAUDE.md exists and doesn't already import LORE.md, the
-import directive is appended so Claude Code loads it automatically.
+For Claude vaults, .claude/CLAUDE.md imports LORE.md so Claude Code loads it
+automatically. For Codex vaults, root AGENTS.md references LORE.md.
 
 Examples:
   lore vault context     # regenerate .lore/LORE.md`,
@@ -31,7 +31,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		cfg, err := config.Load(vaultPath)
+		cfg, err := config.LoadWithLocal(vaultPath)
 		if err != nil {
 			return err
 		}
@@ -44,12 +44,18 @@ Examples:
 		}
 		fmt.Printf("Updated %s\n", lorePath)
 
-		// Ensure .claude/CLAUDE.md imports LORE.md
-		claudePath := filepath.Join(vaultPath, ".claude", "CLAUDE.md")
-		if err := ensureLoreImport(claudePath); err != nil {
-			fmt.Printf("Note: %v\n", err)
-			fmt.Printf("Add this line to your CLAUDE.md to import lore context:\n")
-			fmt.Printf("  @../.lore/LORE.md\n")
+		switch effectiveContextProvider(cfg) {
+		case "claude":
+			claudePath := filepath.Join(vaultPath, ".claude", "CLAUDE.md")
+			if err := ensureLoreImport(claudePath); err != nil {
+				fmt.Printf("Note: %v\n", err)
+				fmt.Printf("Add this line to your CLAUDE.md to import lore context:\n")
+				fmt.Printf("  @../.lore/LORE.md\n")
+			}
+		case "codex":
+			if err := ensureCodexImport(vaultPath); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -245,6 +251,23 @@ func resolveSkillPaths(content, libPath string) string {
 }
 
 const loreImportDirective = "@../.lore/LORE.md"
+const codexLoreImportDirective = "@.lore/LORE.md"
+
+func effectiveContextProvider(cfg *config.Config) string {
+	provider := strings.ToLower(strings.TrimSpace(cfg.Agent.Provider))
+	if provider != "" {
+		return provider
+	}
+	command := strings.ToLower(strings.TrimSpace(cfg.Agent.Command))
+	switch command {
+	case "codex":
+		return "codex"
+	case "none":
+		return "none"
+	default:
+		return "claude"
+	}
+}
 
 // ensureLoreImport checks if .claude/CLAUDE.md already imports LORE.md.
 // If not, appends the import directive.
@@ -270,6 +293,36 @@ func ensureLoreImport(claudePath string) error {
 	}
 
 	fmt.Printf("Added lore import to %s\n", claudePath)
+	return nil
+}
+
+// ensureCodexImport creates or updates root AGENTS.md so Codex sees LORE.md.
+func ensureCodexImport(vaultPath string) error {
+	agentsPath := filepath.Join(vaultPath, "AGENTS.md")
+	data, err := os.ReadFile(agentsPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("could not read %s: %w", agentsPath, err)
+	}
+
+	content := string(data)
+	if strings.Contains(content, codexLoreImportDirective) {
+		return nil
+	}
+	if content == "" {
+		content = "# Lore Vault\n\n## Context\n\n"
+	} else if !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	if !strings.HasSuffix(content, "\n\n") {
+		content += "\n"
+	}
+	content += codexLoreImportDirective + "\n"
+
+	if err := os.WriteFile(agentsPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("could not update %s: %w", agentsPath, err)
+	}
+
+	fmt.Printf("Added lore import to %s\n", agentsPath)
 	return nil
 }
 

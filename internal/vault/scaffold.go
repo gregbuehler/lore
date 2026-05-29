@@ -12,11 +12,12 @@ import (
 
 // ScaffoldOptions contains the user-provided configuration for vault init.
 type ScaffoldOptions struct {
-	Name     string
-	Email    string
-	Host     string
-	Entities []string // e.g., ["people", "services", "tooling", "infrastructure"]
-	Adopt    bool
+	Name          string
+	Email         string
+	Host          string
+	Entities      []string // e.g., ["people", "services", "tooling", "infrastructure"]
+	Adopt         bool
+	AgentProvider string // claude, codex, custom, none
 }
 
 // Scaffold creates a new vault directory structure.
@@ -41,6 +42,11 @@ func Scaffold(vaultPath string, opts ScaffoldOptions) error {
 		}
 	}
 
+	agentProvider := normalizeAgentProvider(opts.AgentProvider)
+	if agentProvider == "" {
+		return fmt.Errorf("unsupported agent provider %q (use claude, codex, custom, or none)", opts.AgentProvider)
+	}
+
 	// Create directories
 	dirs := []string{
 		filepath.Join(abs, "Daily Log"),
@@ -50,7 +56,9 @@ func Scaffold(vaultPath string, opts ScaffoldOptions) error {
 		filepath.Join(abs, "sources"),
 		filepath.Join(abs, config.LoreDir),
 		filepath.Join(abs, config.LoreDir, "skills"),
-		filepath.Join(abs, ".claude", "commands"),
+	}
+	if agentProvider == "claude" {
+		dirs = append(dirs, filepath.Join(abs, ".claude", "commands"))
 	}
 	// Wiki subdirectories per entity type
 	dirs = append(dirs, filepath.Join(abs, "Wiki"))
@@ -72,9 +80,7 @@ func Scaffold(vaultPath string, opts ScaffoldOptions) error {
 		},
 		DefaultHost: opts.Host,
 		MetaIndex:   filepath.Join(config.LibrariesDir(), "meta-index.md"),
-		Agent: config.AgentConfig{
-			Command: "claude",
-		},
+		Agent:       defaultAgentConfig(agentProvider),
 	}
 	if opts.Name != "" || opts.Email != "" {
 		cfg.Identity = config.IdentityConfig{
@@ -86,32 +92,40 @@ func Scaffold(vaultPath string, opts ScaffoldOptions) error {
 		return err
 	}
 
-	// === .claude/CLAUDE.md ===
-	if err := writeIfNotExists(filepath.Join(abs, ".claude", "CLAUDE.md"),
-		generateClaudeMD(opts, today)); err != nil {
-		return err
-	}
+	if agentProvider == "claude" {
+		// === .claude/CLAUDE.md ===
+		if err := writeIfNotExists(filepath.Join(abs, ".claude", "CLAUDE.md"),
+			generateClaudeMD(opts, today)); err != nil {
+			return err
+		}
 
-	// === .claude/commands/ ===
-	if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "daily-log.md"),
-		generateDailyLogCommand(opts)); err != nil {
-		return err
+		// === .claude/commands/ ===
+		if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "daily-log.md"),
+			generateDailyLogCommand(opts)); err != nil {
+			return err
+		}
+		if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "weekly-digest.md"),
+			generateWeeklyDigestCommand()); err != nil {
+			return err
+		}
+		if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "lint.md"),
+			generateLintCommand(opts)); err != nil {
+			return err
+		}
+		if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "wiki-update.md"),
+			generateWikiUpdateCommand(opts)); err != nil {
+			return err
+		}
+		if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "capture.md"),
+			generateCaptureCommand()); err != nil {
+			return err
+		}
 	}
-	if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "weekly-digest.md"),
-		generateWeeklyDigestCommand()); err != nil {
-		return err
-	}
-	if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "lint.md"),
-		generateLintCommand(opts)); err != nil {
-		return err
-	}
-	if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "wiki-update.md"),
-		generateWikiUpdateCommand(opts)); err != nil {
-		return err
-	}
-	if err := writeIfNotExists(filepath.Join(abs, ".claude", "commands", "capture.md"),
-		generateCaptureCommand()); err != nil {
-		return err
+	if agentProvider == "codex" {
+		if err := writeIfNotExists(filepath.Join(abs, "AGENTS.md"),
+			generateAgentsMD(opts, today)); err != nil {
+			return err
+		}
 	}
 
 	// === Templates/ ===
@@ -149,6 +163,36 @@ func Scaffold(vaultPath string, opts ScaffoldOptions) error {
 	}
 
 	return nil
+}
+
+func normalizeAgentProvider(provider string) string {
+	normalized := strings.ToLower(strings.TrimSpace(provider))
+	switch normalized {
+	case "":
+		return "claude"
+	case "claude", "codex", "custom", "none":
+		return normalized
+	default:
+		return ""
+	}
+}
+
+func defaultAgentConfig(provider string) config.AgentConfig {
+	switch provider {
+	case "claude":
+		return config.AgentConfig{Provider: "claude", Command: "claude"}
+	case "codex":
+		return config.AgentConfig{
+			Provider: "codex",
+			Command:  "codex",
+			Sandbox:  "workspace-write",
+			Approval: "never",
+		}
+	case "none":
+		return config.AgentConfig{Provider: "none"}
+	default:
+		return config.AgentConfig{}
+	}
 }
 
 func writeIfNotExists(path, content string) error {
@@ -373,6 +417,38 @@ func generateClaudeMD(opts ScaffoldOptions, today string) string {
 
 	// Lore import
 	b.WriteString("@../.lore/LORE.md\n")
+
+	return b.String()
+}
+
+func generateAgentsMD(opts ScaffoldOptions, today string) string {
+	var b strings.Builder
+
+	ownerLine := "the vault owner"
+	if opts.Name != "" {
+		ownerLine = opts.Name
+	}
+
+	b.WriteString("# Lore Vault\n\n")
+	b.WriteString(fmt.Sprintf("Personal knowledge vault for %s. Initialized %s.\n\n", ownerLine, today))
+	b.WriteString("## Context\n\n")
+	b.WriteString("Read the lore-generated vault context before answering questions about subscribed libraries, vault skills, or maintenance workflows.\n\n")
+	b.WriteString("@.lore/LORE.md\n\n")
+	b.WriteString("## Vault Structure\n\n")
+	b.WriteString("```\n")
+	b.WriteString("Daily Log/YYYY-MM/YYYY-MM-DD.md   - Daily journal entries\n")
+	b.WriteString("Weekly Digest/YYYY-WXX.md         - Weekly impact summaries\n")
+	b.WriteString("Wiki/                             - Entity memory; read Wiki/index.md first\n")
+	for _, et := range opts.Entities {
+		dir := entityDirName(et)
+		b.WriteString(fmt.Sprintf("  Wiki/%s/\n", dir))
+	}
+	b.WriteString("Threads/                          - Ongoing efforts, incidents, workstreams\n")
+	b.WriteString("Templates/                        - Document templates\n")
+	b.WriteString("sources/                          - Raw source material\n")
+	b.WriteString("log.md                            - Append-only activity log\n")
+	b.WriteString(".lore/                            - CLI config, vault-level skills\n")
+	b.WriteString("```\n")
 
 	return b.String()
 }

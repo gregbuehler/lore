@@ -20,6 +20,7 @@ var (
 	initEmail    string
 	initHost     string
 	initEntities string
+	initAgent    string
 )
 
 var initCmd = &cobra.Command{
@@ -44,6 +45,7 @@ Scaffolds a complete personal knowledge vault with:
 
 You can pass all options as flags for non-interactive use:
   lore vault init ~/vault --name "Jane Smith" --email jane@co.com --entities people,services,tooling
+  lore vault init ~/vault --agent codex
 
 Use --adopt to add lore to an existing directory (e.g., an Obsidian vault).
 This creates only the .lore/ config and any missing scaffolding without
@@ -56,11 +58,12 @@ overwriting existing files.`,
 		}
 
 		opts := vault.ScaffoldOptions{
-			Name:     initName,
-			Email:    initEmail,
-			Host:     initHost,
-			Entities: nil,
-			Adopt:    initAdopt,
+			Name:          initName,
+			Email:         initEmail,
+			Host:          initHost,
+			Entities:      nil,
+			Adopt:         initAdopt,
+			AgentProvider: initAgent,
 		}
 
 		if initEntities != "" {
@@ -86,7 +89,14 @@ overwriting existing files.`,
 			fmt.Printf("Vault initialized at %s\n", path)
 		}
 		fmt.Println("\nNext steps:")
-		fmt.Println("  1. Review and customize .claude/CLAUDE.md")
+		switch opts.AgentProvider {
+		case "codex":
+			fmt.Println("  1. Review and customize AGENTS.md")
+		case "none":
+			fmt.Println("  1. Configure your preferred agent instructions if needed")
+		default:
+			fmt.Println("  1. Review and customize .claude/CLAUDE.md")
+		}
 		fmt.Println("  2. Run 'lore subscribe <org/repo>' to subscribe to a library")
 		fmt.Println("  3. Run 'lore vault context' to generate agent context")
 		return nil
@@ -171,6 +181,11 @@ func applyDefaults(opts *vault.ScaffoldOptions) {
 			"environments", "organizations", "customers", "vendors", "concepts",
 		}
 	}
+	if opts.AgentProvider == "" {
+		opts.AgentProvider = "claude"
+	} else {
+		opts.AgentProvider = strings.ToLower(strings.TrimSpace(opts.AgentProvider))
+	}
 }
 
 // defaultVaultPath returns ~/Documents/lore/<username> as the default vault location.
@@ -218,4 +233,5 @@ func init() {
 	initCmd.Flags().StringVar(&initEmail, "email", "", "Your email (for config)")
 	initCmd.Flags().StringVar(&initHost, "host", "", "Git forge host (GHE, GitLab, etc). Auto-detected from gh CLI if available")
 	initCmd.Flags().StringVar(&initEntities, "entities", "", "Entity types, comma-separated (e.g., people,services,tooling)")
+	initCmd.Flags().StringVar(&initAgent, "agent", "claude", "Agent scaffold to create: claude, codex, or none")
 }

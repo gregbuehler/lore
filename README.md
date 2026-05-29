@@ -80,6 +80,8 @@ lore vault context
 
 This writes `.lore/LORE.md` with your library subscriptions, skills, and workflows, and imports it into `.claude/CLAUDE.md` so Claude Code sees everything on session start.
 
+For Codex-based vaults, the same generated `.lore/LORE.md` is imported from `AGENTS.md`.
+
 ### 6. Explore further
 
 ```bash
@@ -282,7 +284,7 @@ Push ──→ lore publish ──→ commit+push pending changes to library rep
 1. Scans daily log files for entity mentions newer than each page's `last_updated`
 2. Matches mentions using entity names and aliases (word-boundary-aware)
 3. Assembles a context package: current page + new evidence + tone rules + format rules
-4. Invokes the configured agent (`claude` by default) to rewrite the page
+4. Invokes the configured agent to rewrite the page
 5. Cleans up the context package and rebuilds indexes
 
 ### How `watch` works
@@ -292,6 +294,37 @@ Push ──→ lore publish ──→ commit+push pending changes to library rep
 3. Runs `git log --since=<last_updated>` to find relevant commits
 4. Assembles a context package with commits, authors, file lists, and instructions
 5. Invokes the agent to synthesize changes into the page
+
+### Agent providers
+
+Maintenance commands use `agent.provider` to decide how agent work is executed. Shared defaults live in `.lore/config.yaml`; machine-local preferences can live in `.lore/local.yaml`, so the same synced vault can use Codex at home and Claude at work without editing the shared config.
+
+| Provider | Behavior |
+|----------|----------|
+| `claude` | Run Claude non-interactively with `claude -p <prompt>`. |
+| `codex` | Run Codex non-interactively with `codex exec`, send the prompt on stdin, and pass `--cd <workdir>`. Sandbox and approval settings are configurable. |
+| `custom` | Run a user-supplied command for sites that wrap or proxy an agent. |
+| `none` | Do not invoke an agent; commands stop before synthesis. |
+
+Dangerous permission bypass is always opt-in. When enabled, lore maps it to the provider-specific dangerous flag, such as Claude's `--dangerously-skip-permissions` or Codex's equivalent unsafe bypass flag. Leave it disabled for normal local or CI maintenance.
+
+Agent selection precedence is:
+
+1. Command flag, for example `lore maintain services --agent codex`
+2. Environment, for example `LORE_AGENT_PROVIDER=codex`
+3. Machine-local `.lore/local.yaml`
+4. Shared `.lore/config.yaml`
+5. Backward-compatible default: Claude
+
+Example `.lore/local.yaml` for a Codex machine:
+
+```yaml
+agent:
+  provider: codex
+  command: codex
+  sandbox: workspace-write
+  approval: never
+```
 
 ### CI Automation
 
@@ -335,11 +368,16 @@ jobs:
 lore generates context so your agent understands the knowledge system:
 
 ```
-.claude/CLAUDE.md          ← your hand-authored vault operating manual
-  @../.lore/LORE.md        ← import: generated library/skills discovery
+.lore/LORE.md             ← generated library/skills discovery
+
+.claude/CLAUDE.md         ← Claude vault operating manual
+  @../.lore/LORE.md       ← import: generated context
+
+AGENTS.md                 ← Codex vault operating manual
+  @.lore/LORE.md          ← import: generated context
 
 Library CLAUDE.md          ← per-library agent instructions
   excerpt.md               ← per-library self-description
 ```
 
-Run `lore vault context` after subscribing to new libraries or adding skills. It regenerates `.lore/LORE.md` and wires the import into `.claude/CLAUDE.md` (idempotently).
+Run `lore vault context` after subscribing to new libraries or adding skills. It regenerates `.lore/LORE.md` and wires the import into the active provider's context file idempotently: `.claude/CLAUDE.md` for Claude and `AGENTS.md` for Codex.
