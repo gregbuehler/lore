@@ -39,7 +39,7 @@ func SetFrontmatterField(content, key, value string) (string, error) {
 		return content, fmt.Errorf("frontmatter must be a YAML mapping")
 	}
 
-	valueNode := parseYAMLValueNode(value)
+	valueNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
 	replaced := false
 	for i := 0; i < len(mapping.Content)-1; i += 2 {
 		if mapping.Content[i].Value == key {
@@ -76,12 +76,4 @@ func splitFrontmatter(content string) (frontmatter, body string, ok bool) {
 		after = after[1:]
 	}
 	return rest[:end], after, true
-}
-
-func parseYAMLValueNode(value string) *yaml.Node {
-	var doc yaml.Node
-	if err := yaml.Unmarshal([]byte(value), &doc); err == nil && len(doc.Content) > 0 {
-		return doc.Content[0]
-	}
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
 }

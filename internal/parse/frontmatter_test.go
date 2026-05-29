@@ -27,14 +27,27 @@ func TestSetFrontmatterFieldUpdatesExistingKey(t *testing.T) {
 	}
 }
 
-func TestSetFrontmatterFieldAddsSequenceValue(t *testing.T) {
+func TestSetFrontmatterFieldAddsLiteralStringValue(t *testing.T) {
 	content := "---\ntitle: Service\n---\n# Service\n"
 
 	got, err := SetFrontmatterField(content, "tags", "[service, critical]")
 	if err != nil {
 		t.Fatalf("SetFrontmatterField: %v", err)
 	}
-	want := "---\ntitle: Service\ntags: [service, critical]\n---\n# Service\n"
+	want := "---\ntitle: Service\ntags: '[service, critical]'\n---\n# Service\n"
+	if got != want {
+		t.Fatalf("content = %q, want %q", got, want)
+	}
+}
+
+func TestSetFrontmatterFieldKeepsNumericLookingValueString(t *testing.T) {
+	content := "---\ntitle: Service\n---\n# Service\n"
+
+	got, err := SetFrontmatterField(content, "version", "1.20")
+	if err != nil {
+		t.Fatalf("SetFrontmatterField: %v", err)
+	}
+	want := "---\ntitle: Service\nversion: \"1.20\"\n---\n# Service\n"
 	if got != want {
 		t.Fatalf("content = %q, want %q", got, want)
 	}
