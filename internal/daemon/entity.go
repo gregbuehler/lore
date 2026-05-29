@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	entitypkg "github.com/gbuehler/lore/internal/entity"
 	"github.com/gbuehler/lore/internal/parse"
 	"github.com/gbuehler/lore/internal/pathutil"
 )
@@ -19,7 +20,7 @@ func (d *Daemon) dispatchEntityCreate(req *Request) *Response {
 	if req.EntityType == "" {
 		return &Response{OK: false, Error: "entity_type is required"}
 	}
-	if !validEntityTypes[req.EntityType] {
+	if !entitypkg.ValidTypes[req.EntityType] {
 		return &Response{OK: false, Error: fmt.Sprintf("unknown entity_type %q; valid types: service, environment, person, tool, infrastructure, organization, customer, vendor, concept", req.EntityType)}
 	}
 	if d.state.VaultPath == "" {
@@ -47,7 +48,7 @@ func (d *Daemon) dispatchEntityCreate(req *Request) *Response {
 	}
 
 	today := time.Now().Format("2006-01-02")
-	content := buildEntityContent(req.EntityType, title, today)
+	content := entitypkg.BuildContent(req.EntityType, title, today)
 
 	if err := os.WriteFile(destPath, []byte(content), 0644); err != nil {
 		return &Response{OK: false, Error: fmt.Sprintf("writing entity file: %v", err)}
@@ -102,7 +103,7 @@ func (d *Daemon) dispatchEntityUpdate(req *Request) *Response {
 	if req.Changelog != "" {
 		today := time.Now().Format("2006-01-02")
 		entry := fmt.Sprintf("- **%s**: %s", today, req.Changelog)
-		content, err = appendToSection(content, "Change Log", entry)
+		content, err = entitypkg.AppendToSection(content, "Change Log", entry)
 		if err != nil {
 			return &Response{OK: false, Error: fmt.Sprintf("appending changelog: %v", err)}
 		}
@@ -228,92 +229,4 @@ func (d *Daemon) dispatchEntityList(req *Request) *Response {
 		})
 	}
 	return &Response{OK: true, Results: out}
-}
-
-// --------------------------------------------------------------------------
-// Shared helpers (mirrors cmd/lore/entity.go logic — kept in sync manually)
-// --------------------------------------------------------------------------
-
-// validEntityTypes lists the accepted entity_type values.
-var validEntityTypes = map[string]bool{
-	"service":        true,
-	"environment":    true,
-	"person":         true,
-	"tool":           true,
-	"infrastructure": true,
-	"organization":   true,
-	"customer":       true,
-	"vendor":         true,
-	"concept":        true,
-}
-
-// buildEntityContent produces the full markdown content for a new entity file.
-func buildEntityContent(entityType, title, today string) string {
-	var sb strings.Builder
-
-	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("entity_type: %s\n", entityType))
-	sb.WriteString(fmt.Sprintf("title: \"%s\"\n", title))
-	sb.WriteString(fmt.Sprintf("last_updated: %s\n", today))
-	sb.WriteString("tags:\n")
-	sb.WriteString(fmt.Sprintf("  - %s\n", entityType))
-	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("# %s\n", title))
-	sb.WriteString("\n")
-
-	switch entityType {
-	case "person":
-		sb.WriteString("## What They Do\n\n")
-	default:
-		sb.WriteString("## What It Does\n\n")
-	}
-
-	sb.WriteString("## Known Issues\n\n")
-	sb.WriteString("## Change Log\n\n")
-
-	return sb.String()
-}
-
-// appendToSection appends text under the named ## section.
-// If the section is not found, it is created at the end of the file.
-func appendToSection(content, sectionName, text string) (string, error) {
-	target := "## " + sectionName
-	lines := strings.Split(content, "\n")
-
-	sectionIdx := -1
-	for i, line := range lines {
-		if strings.TrimRight(line, " \t") == target {
-			sectionIdx = i
-			break
-		}
-	}
-
-	if sectionIdx < 0 {
-		if !strings.HasSuffix(content, "\n") {
-			content += "\n"
-		}
-		content += fmt.Sprintf("\n%s\n\n%s\n", target, text)
-		return content, nil
-	}
-
-	insertAt := len(lines)
-	for i := sectionIdx + 1; i < len(lines); i++ {
-		if strings.HasPrefix(lines[i], "## ") || strings.HasPrefix(lines[i], "# ") {
-			insertAt = i
-			break
-		}
-	}
-
-	insertBefore := insertAt
-	for insertBefore > sectionIdx+1 && strings.TrimSpace(lines[insertBefore-1]) == "" {
-		insertBefore--
-	}
-
-	newLines := make([]string, 0, len(lines)+2)
-	newLines = append(newLines, lines[:insertBefore]...)
-	newLines = append(newLines, text)
-	newLines = append(newLines, "")
-	newLines = append(newLines, lines[insertBefore:]...)
-
-	return strings.Join(newLines, "\n"), nil
 }

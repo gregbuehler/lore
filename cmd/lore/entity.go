@@ -10,6 +10,7 @@ import (
 
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/daemon"
+	entitypkg "github.com/gbuehler/lore/internal/entity"
 	"github.com/gbuehler/lore/internal/parse"
 	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/gbuehler/lore/internal/store"
@@ -43,18 +44,6 @@ Examples:
 // Supported entity types
 // --------------------------------------------------------------------------
 
-var validEntityTypes = map[string]bool{
-	"service":        true,
-	"environment":    true,
-	"person":         true,
-	"tool":           true,
-	"infrastructure": true,
-	"organization":   true,
-	"customer":       true,
-	"vendor":         true,
-	"concept":        true,
-}
-
 // --------------------------------------------------------------------------
 // entity create
 // --------------------------------------------------------------------------
@@ -84,7 +73,7 @@ Examples:
 		if entityCreateType == "" {
 			return fmt.Errorf("--type is required (service, environment, person, tool, infrastructure, organization, customer, vendor, concept)")
 		}
-		if !validEntityTypes[entityCreateType] {
+		if !entitypkg.ValidTypes[entityCreateType] {
 			return fmt.Errorf("unknown entity type %q; valid types: service, environment, person, tool, infrastructure, organization, customer, vendor, concept", entityCreateType)
 		}
 
@@ -135,7 +124,7 @@ Examples:
 		}
 
 		today := time.Now().Format("2006-01-02")
-		content := buildEntityContent(entityCreateType, title, today)
+		content := entitypkg.BuildContent(entityCreateType, title, today)
 
 		if err := os.WriteFile(destPath, []byte(content), 0644); err != nil {
 			return fmt.Errorf("writing entity file: %w", err)
@@ -144,33 +133,6 @@ Examples:
 		fmt.Println(destPath)
 		return nil
 	},
-}
-
-// buildEntityContent produces the full markdown content for a new entity file.
-func buildEntityContent(entityType, title, today string) string {
-	var sb strings.Builder
-
-	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("entity_type: %s\n", entityType))
-	sb.WriteString(fmt.Sprintf("title: \"%s\"\n", title))
-	sb.WriteString(fmt.Sprintf("last_updated: %s\n", today))
-	sb.WriteString("tags:\n")
-	sb.WriteString(fmt.Sprintf("  - %s\n", entityType))
-	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("# %s\n", title))
-	sb.WriteString("\n")
-
-	switch entityType {
-	case "person":
-		sb.WriteString("## What They Do\n\n")
-	default:
-		sb.WriteString("## What It Does\n\n")
-	}
-
-	sb.WriteString("## Known Issues\n\n")
-	sb.WriteString("## Change Log\n\n")
-
-	return sb.String()
 }
 
 // --------------------------------------------------------------------------
@@ -269,7 +231,7 @@ Examples:
 		if entityUpdateAppendChangelog != "" {
 			today := time.Now().Format("2006-01-02")
 			entry := fmt.Sprintf("- **%s**: %s", today, entityUpdateAppendChangelog)
-			content, err = appendToSection(content, "Change Log", entry)
+			content, err = entitypkg.AppendToSection(content, "Change Log", entry)
 			if err != nil {
 				return fmt.Errorf("appending changelog: %w", err)
 			}
@@ -283,7 +245,7 @@ Examples:
 			}
 			sectionName := strings.TrimSpace(sv[:idx])
 			text := strings.TrimSpace(sv[idx+1:])
-			content, err = appendToSection(content, sectionName, text)
+			content, err = entitypkg.AppendToSection(content, sectionName, text)
 			if err != nil {
 				return fmt.Errorf("appending to section %q: %w", sectionName, err)
 			}
@@ -296,55 +258,6 @@ Examples:
 		fmt.Printf("updated: %s\n", filePath)
 		return nil
 	},
-}
-
-// appendToSection appends text under the named ## section.
-// If the section is not found, it is created at the end of the file.
-func appendToSection(content, sectionName, text string) (string, error) {
-	target := "## " + sectionName
-	lines := strings.Split(content, "\n")
-
-	// Find the target section
-	sectionIdx := -1
-	for i, line := range lines {
-		if strings.TrimRight(line, " \t") == target {
-			sectionIdx = i
-			break
-		}
-	}
-
-	if sectionIdx < 0 {
-		// Section not found — append it at the end
-		if !strings.HasSuffix(content, "\n") {
-			content += "\n"
-		}
-		content += fmt.Sprintf("\n%s\n\n%s\n", target, text)
-		return content, nil
-	}
-
-	// Find the end of this section (next ## heading or EOF)
-	insertAt := len(lines)
-	for i := sectionIdx + 1; i < len(lines); i++ {
-		if strings.HasPrefix(lines[i], "## ") || strings.HasPrefix(lines[i], "# ") {
-			insertAt = i
-			break
-		}
-	}
-
-	// Insert before the next section (or at end), with a blank line separator
-	// Walk back past trailing blank lines so we don't accumulate excess whitespace
-	insertBefore := insertAt
-	for insertBefore > sectionIdx+1 && strings.TrimSpace(lines[insertBefore-1]) == "" {
-		insertBefore--
-	}
-
-	newLines := make([]string, 0, len(lines)+2)
-	newLines = append(newLines, lines[:insertBefore]...)
-	newLines = append(newLines, text)
-	newLines = append(newLines, "")
-	newLines = append(newLines, lines[insertBefore:]...)
-
-	return strings.Join(newLines, "\n"), nil
 }
 
 // --------------------------------------------------------------------------
