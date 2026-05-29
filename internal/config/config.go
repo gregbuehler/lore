@@ -130,6 +130,10 @@ type LocalConfig struct {
 	Agent AgentConfig `yaml:"agent,omitempty"`
 }
 
+func LocalPath(vaultPath string) string {
+	return filepath.Join(vaultPath, LoreDir, "local.yaml")
+}
+
 type IdentityConfig struct {
 	Name  string `yaml:"name,omitempty"`
 	Email string `yaml:"email,omitempty"`
@@ -173,7 +177,7 @@ func LoadWithLocal(vaultPath string) (*Config, error) {
 }
 
 func applyLocalOverrides(cfg *Config, vaultPath string) {
-	data, err := os.ReadFile(filepath.Join(vaultPath, LoreDir, "local.yaml"))
+	data, err := os.ReadFile(LocalPath(vaultPath))
 	if err != nil {
 		return
 	}

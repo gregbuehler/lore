@@ -326,6 +326,15 @@ agent:
   approval: never
 ```
 
+Generate those local overrides with:
+
+```bash
+lore agent local codex
+lore agent local claude
+lore agent local none
+lore agent local status
+```
+
 ### CI Automation
 
 When a library is a git repo, maintenance runs as GitHub Actions:

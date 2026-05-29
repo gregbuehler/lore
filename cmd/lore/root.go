@@ -40,6 +40,7 @@ func init() {
 	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(discoverCmd)
 	rootCmd.AddCommand(daemonCmd)
+	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(queryCmd)
 	rootCmd.AddCommand(contextQueryCmd)
 	rootCmd.AddCommand(tuiCmd)
