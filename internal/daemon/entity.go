@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gbuehler/lore/internal/pathutil"
 )
 
 // dispatchEntityCreate creates a new entity page in the vault, then reindexes it.
@@ -23,8 +25,10 @@ func (d *Daemon) dispatchEntityCreate(req *Request) *Response {
 		return &Response{OK: false, Error: "daemon vault path not set"}
 	}
 
-	entityPath := strings.TrimSuffix(req.EntityPath, ".md")
-	destPath := filepath.Join(d.state.VaultPath, entityPath+".md")
+	destPath, entityPath, err := pathutil.ResolveMarkdownUnderRoot(d.state.VaultPath, req.EntityPath)
+	if err != nil {
+		return &Response{OK: false, Error: err.Error()}
+	}
 
 	// Refuse to overwrite
 	if _, err := os.Stat(destPath); err == nil {
@@ -70,8 +74,10 @@ func (d *Daemon) dispatchEntityUpdate(req *Request) *Response {
 		return &Response{OK: false, Error: "daemon vault path not set"}
 	}
 
-	entityPath := strings.TrimSuffix(req.EntityPath, ".md")
-	filePath := filepath.Join(d.state.VaultPath, entityPath+".md")
+	filePath, _, err := pathutil.ResolveMarkdownUnderRoot(d.state.VaultPath, req.EntityPath)
+	if err != nil {
+		return &Response{OK: false, Error: err.Error()}
+	}
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return &Response{OK: false, Error: fmt.Sprintf("file does not exist: %s (use entity_create to create it)", filePath)}
@@ -122,19 +128,20 @@ func (d *Daemon) dispatchEntityGet(req *Request) *Response {
 		return &Response{OK: false, Error: "entity_path is required"}
 	}
 
-	entityPath := strings.TrimSuffix(req.EntityPath, ".md")
-
 	// Search all indexed paths (vault + libraries)
 	filePath := ""
 	for _, root := range d.state.Paths {
-		candidate := filepath.Join(root, entityPath+".md")
+		candidate, _, err := pathutil.ResolveMarkdownUnderRoot(root, req.EntityPath)
+		if err != nil {
+			return &Response{OK: false, Error: err.Error()}
+		}
 		if _, err := os.Stat(candidate); err == nil {
 			filePath = candidate
 			break
 		}
 	}
 	if filePath == "" {
-		return &Response{OK: false, Error: fmt.Sprintf("entity not found: %s", entityPath)}
+		return &Response{OK: false, Error: fmt.Sprintf("entity not found: %s", strings.TrimSuffix(req.EntityPath, ".md"))}
 	}
 
 	data, err := os.ReadFile(filePath)
@@ -161,8 +168,10 @@ func (d *Daemon) dispatchEntityDelete(req *Request) *Response {
 		return &Response{OK: false, Error: "daemon vault path not set"}
 	}
 
-	entityPath := strings.TrimSuffix(req.EntityPath, ".md")
-	filePath := filepath.Join(d.state.VaultPath, entityPath+".md")
+	filePath, entityPath, err := pathutil.ResolveMarkdownUnderRoot(d.state.VaultPath, req.EntityPath)
+	if err != nil {
+		return &Response{OK: false, Error: err.Error()}
+	}
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return &Response{OK: false, Error: fmt.Sprintf("entity not found: %s", filePath)}

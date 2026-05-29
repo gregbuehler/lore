@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/gbuehler/lore/internal/store"
 )
 
@@ -282,8 +283,6 @@ func (d *Daemon) dispatchContext(req *Request) *Response {
 	if node == "" {
 		return &Response{OK: false, Error: "node is required for context queries"}
 	}
-	node = strings.TrimSuffix(node, ".md")
-
 	depth := req.Depth
 	if depth <= 0 {
 		depth = 1
@@ -292,9 +291,13 @@ func (d *Daemon) dispatchContext(req *Request) *Response {
 	// Find the page file across all indexed paths
 	pagePath := ""
 	for _, root := range d.state.Paths {
-		candidate := filepath.Join(root, node+".md")
+		candidate, relNode, err := pathutil.ResolveMarkdownUnderRoot(root, node)
+		if err != nil {
+			return &Response{OK: false, Error: err.Error()}
+		}
 		if _, err := os.Stat(candidate); err == nil {
 			pagePath = candidate
+			node = relNode
 			break
 		}
 	}
@@ -423,4 +426,3 @@ func truncateContextToFirstSection(content string) string {
 	}
 	return strings.Join(result, "\n")
 }
-

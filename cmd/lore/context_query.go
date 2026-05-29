@@ -8,6 +8,7 @@ import (
 
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/daemon"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/gbuehler/lore/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -88,7 +89,10 @@ Examples:
 		var b strings.Builder
 
 		// 1. Read the node's page content
-		pagePath := findPagePath(absVault, cfg, node)
+		pagePath, err := findPagePath(absVault, cfg, node)
+		if err != nil {
+			return err
+		}
 		if pagePath == "" {
 			return fmt.Errorf("page not found: %s", node)
 		}
@@ -180,22 +184,28 @@ Examples:
 
 // findPagePath resolves a node RelPath to an absolute file path,
 // searching vault and all subscribed libraries.
-func findPagePath(vaultPath string, cfg *config.Config, node string) string {
+func findPagePath(vaultPath string, cfg *config.Config, node string) (string, error) {
 	// Try vault first
-	candidate := filepath.Join(vaultPath, node+".md")
+	candidate, _, err := pathutil.ResolveMarkdownUnderRoot(vaultPath, node)
+	if err != nil {
+		return "", err
+	}
 	if _, err := os.Stat(candidate); err == nil {
-		return candidate
+		return candidate, nil
 	}
 
 	// Try subscribed libraries
 	for _, sub := range cfg.Subscriptions {
-		candidate = filepath.Join(sub.Path, node+".md")
+		candidate, _, err = pathutil.ResolveMarkdownUnderRoot(sub.Path, node)
+		if err != nil {
+			return "", err
+		}
 		if _, err := os.Stat(candidate); err == nil {
-			return candidate
+			return candidate, nil
 		}
 	}
 
-	return ""
+	return "", nil
 }
 
 // truncateToFirstSection returns content up to and including the first ## heading's body.

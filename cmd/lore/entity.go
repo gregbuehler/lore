@@ -11,6 +11,7 @@ import (
 
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/daemon"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/gbuehler/lore/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -124,7 +125,10 @@ Examples:
 			title = filepath.Base(entityPath)
 		}
 
-		destPath := filepath.Join(vaultPath, entityPath+".md")
+		destPath, entityPath, err := pathutil.ResolveMarkdownUnderRoot(vaultPath, entityPath)
+		if err != nil {
+			return err
+		}
 
 		// Refuse to overwrite
 		if _, err := os.Stat(destPath); err == nil {
@@ -229,10 +233,10 @@ Examples:
 			if err == nil {
 				defer client.Close()
 				resp, err := client.Send(&daemon.Request{
-					Type:        "entity_update",
-					EntityPath:  entityPath,
-					SetFields:   setFields,
-					Changelog:   entityUpdateAppendChangelog,
+					Type:       "entity_update",
+					EntityPath: entityPath,
+					SetFields:  setFields,
+					Changelog:  entityUpdateAppendChangelog,
 				})
 				if err == nil {
 					if !resp.OK {
@@ -251,7 +255,10 @@ Examples:
 			return err
 		}
 
-		filePath := filepath.Join(vaultPath, entityPath+".md")
+		filePath, _, err := pathutil.ResolveMarkdownUnderRoot(vaultPath, entityPath)
+		if err != nil {
+			return err
+		}
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			return fmt.Errorf("file does not exist: %s (use 'lore entity create' to create it)", filePath)
 		}
@@ -443,7 +450,10 @@ Examples:
 			if err != nil {
 				return err
 			}
-			filePath := filepath.Join(vaultPath, entityPath+".md")
+			filePath, _, err := pathutil.ResolveMarkdownUnderRoot(vaultPath, entityPath)
+			if err != nil {
+				return err
+			}
 			if _, err := os.Stat(filePath); os.IsNotExist(err) {
 				return fmt.Errorf("entity not found: %s", filePath)
 			}
@@ -600,7 +610,10 @@ Examples:
 			return err
 		}
 
-		filePath := filepath.Join(vaultPath, entityPath+".md")
+		filePath, _, err := pathutil.ResolveMarkdownUnderRoot(vaultPath, entityPath)
+		if err != nil {
+			return err
+		}
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			return fmt.Errorf("entity not found: %s", filePath)
 		}
