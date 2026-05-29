@@ -17,6 +17,7 @@ import (
 var maintainEntity string
 var maintainDryRun bool
 var agentDangerouslySkipPermissions bool
+var agentProviderOverride string
 
 var maintainCmd = &cobra.Command{
 	Use:   "maintain <library>",
@@ -50,6 +51,7 @@ Examples:
 		if err != nil {
 			return err
 		}
+		agentCfg := agentConfigWithProvider(cfg.Agent, agentProviderOverride)
 
 		sub := findSubscription(cfg, libraryName)
 		if sub == nil {
@@ -89,7 +91,7 @@ Examples:
 		// Load tone rules
 		toneRules := loadToneRules(sub.Path)
 
-		agentLabel := agent.Label(cfg.Agent)
+		agentLabel := agent.Label(agentCfg)
 
 		// Sort entities by evidence count
 		type entityWork struct {
@@ -152,7 +154,7 @@ Examples:
 				pkgPath, pagePath, time.Now().Format("2006-01-02"), pagePath,
 			)
 
-			if err := runAgent(cfg.Agent, sub.Path, prompt); err != nil {
+			if err := runAgent(agentCfg, sub.Path, prompt); err != nil {
 				fmt.Printf("    error: %v\n", err)
 				continue
 			}
@@ -354,8 +356,17 @@ func runAgent(agentCfg config.AgentConfig, workDir, prompt string) error {
 	}, os.Stdout, os.Stderr)
 }
 
+func agentConfigWithProvider(agentCfg config.AgentConfig, provider string) config.AgentConfig {
+	if strings.TrimSpace(provider) != "" {
+		agentCfg.Provider = strings.ToLower(strings.TrimSpace(provider))
+		agentCfg.Command = ""
+	}
+	return agentCfg
+}
+
 func init() {
 	maintainCmd.Flags().StringVar(&maintainEntity, "entity", "", "Maintain a single entity (e.g., --entity storage)")
 	maintainCmd.Flags().BoolVar(&maintainDryRun, "dry-run", false, "Generate context packages without invoking the agent")
+	maintainCmd.Flags().StringVar(&agentProviderOverride, "agent", "", "Agent provider for this run: claude, codex, custom, or none")
 	maintainCmd.Flags().BoolVar(&agentDangerouslySkipPermissions, "dangerously-skip-permissions", false, "Pass --dangerously-skip-permissions to the configured agent")
 }

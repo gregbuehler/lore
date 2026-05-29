@@ -49,6 +49,16 @@ func TestBuildInvocationInfersCodexFromCommand(t *testing.T) {
 	}
 }
 
+func TestBuildInvocationProviderUsesProviderDefaultWhenCommandEmpty(t *testing.T) {
+	inv, err := BuildInvocation(config.AgentConfig{Provider: "codex"}, "/repo", "prompt", Options{})
+	if err != nil {
+		t.Fatalf("BuildInvocation returned error: %v", err)
+	}
+	if inv.Command != "codex" {
+		t.Fatalf("Command = %q, want codex", inv.Command)
+	}
+}
+
 func contains(items []string, needle string) bool {
 	for _, item := range items {
 		if item == needle {

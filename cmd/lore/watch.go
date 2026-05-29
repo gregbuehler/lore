@@ -162,7 +162,8 @@ Examples:
 		})
 
 		toneRules := loadToneRules(sub.Path)
-		agentLabel := agent.Label(cfg.Agent)
+		agentCfg := agentConfigWithProvider(cfg.Agent, agentProviderOverride)
+		agentLabel := agent.Label(agentCfg)
 
 		fmt.Printf("Watching %s: %d entities with source changes\n\n", libraryName, len(work))
 
@@ -211,7 +212,7 @@ Examples:
 				pkgPath, pagePath, time.Now().Format("2006-01-02"), pagePath,
 			)
 
-			if err := runAgent(cfg.Agent, sub.Path, prompt); err != nil {
+			if err := runAgent(agentCfg, sub.Path, prompt); err != nil {
 				fmt.Printf("    error: %v\n", err)
 				continue
 			}
@@ -713,5 +714,6 @@ func buildWatchContextPackage(entityName, entityType, currentPage string, change
 func init() {
 	watchCmd.Flags().StringVar(&watchEntity, "entity", "", "Watch a single entity (e.g., --entity argus)")
 	watchCmd.Flags().BoolVar(&watchDryRun, "dry-run", false, "Generate context packages without invoking the agent")
+	watchCmd.Flags().StringVar(&agentProviderOverride, "agent", "", "Agent provider for this run: claude, codex, custom, or none")
 	watchCmd.Flags().BoolVar(&agentDangerouslySkipPermissions, "dangerously-skip-permissions", false, "Pass --dangerously-skip-permissions to the configured agent")
 }
