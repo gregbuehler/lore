@@ -164,7 +164,8 @@ lore entity list [--type <t>]      List entities
 lore note <text>                   Append to today's daily log
 lore thread new <topic>            Scaffold an investigation thread
 lore fix-links [--dry-run]         Resolve broken wikilinks across vault
-lore publish [library]             Commit+push pending library changes
+lore publish [library]             Commit+push managed library changes
+lore publish [library] --all       Commit+push all repository changes
 ```
 
 ## Daemon Architecture

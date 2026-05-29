@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/gbuehler/lore/internal/config"
@@ -16,6 +18,17 @@ var publishVault string
 var publishMessage string
 var publishDryRun bool
 var publishYes bool
+var publishAll bool
+
+var publishManagedPathCandidates = []string{
+	"Wiki",
+	"skills",
+	"sources",
+	"library.yaml",
+	"excerpt.md",
+	"log.md",
+	"CLAUDE.md",
+}
 
 type publishChange struct {
 	name   string
@@ -46,6 +59,7 @@ Examples:
   lore publish
   lore publish my-library
   lore publish --dry-run
+  lore publish --all
   lore publish --yes
   lore publish --message "docs: add runbook"
   lore publish --vault ~/notes -m "update content"`,
@@ -125,7 +139,7 @@ Examples:
 		}
 
 		if len(changes) > 0 {
-			fmt.Print(formatPublishStatuses(changes))
+			fmt.Print(formatPublishStatuses(changes, publishAll))
 
 			if publishDryRun {
 				for _, change := range changes {
@@ -145,7 +159,7 @@ Examples:
 
 				for _, change := range changes {
 					fmt.Printf("  publishing %s...\n", change.name)
-					results = append(results, publishLibrary(change.name, change.path))
+					results = append(results, publishLibrary(change.name, change.path, publishAll))
 				}
 			}
 		}
@@ -207,11 +221,17 @@ func init() {
 	publishCmd.Flags().StringVarP(&publishMessage, "message", "m", "lore: update content", "Commit message")
 	publishCmd.Flags().BoolVar(&publishDryRun, "dry-run", false, "Show what would be published without staging, committing, or pushing")
 	publishCmd.Flags().BoolVarP(&publishYes, "yes", "y", false, "Publish without interactive confirmation")
+	publishCmd.Flags().BoolVar(&publishAll, "all", false, "Stage all repository changes with git add -A")
 }
 
-func formatPublishStatuses(changes []publishChange) string {
+func formatPublishStatuses(changes []publishChange, stageAll bool) string {
 	var b strings.Builder
 	b.WriteString("Pending changes to publish:\n")
+	if stageAll {
+		b.WriteString("Staging mode: all repository changes (--all / git add -A)\n")
+	} else {
+		b.WriteString("Staging mode: lore-managed library content paths only (use --all for full-repository staging)\n")
+	}
 	for _, change := range changes {
 		fmt.Fprintf(&b, "  %s (%s)\n", change.name, change.path)
 		for _, line := range strings.Split(strings.TrimRight(change.status, "\n"), "\n") {
@@ -236,9 +256,28 @@ func confirmPublish(in io.Reader, out io.Writer) (bool, error) {
 	return answer == "y" || answer == "yes", nil
 }
 
-func publishLibrary(name, path string) publishResult {
-	// Stage all changes.
-	addCmd := exec.Command("git", "-C", path, "add", "-A")
+func publishLibrary(name, path string, stageAll bool) publishResult {
+	var stagePaths []string
+	if !stageAll {
+		var err error
+		stagePaths, err = publishManagedPaths(path)
+		if err != nil {
+			return publishResult{
+				name: name,
+				err:  fmt.Errorf("finding managed paths: %w", err),
+			}
+		}
+	}
+
+	addArgs := publishStageArgs(stageAll, stagePaths)
+	if addArgs == nil {
+		return publishResult{
+			name: name,
+			err:  fmt.Errorf("no lore-managed paths found to stage (use --all to stage the full repository)"),
+		}
+	}
+
+	addCmd := exec.Command("git", append([]string{"-C", path}, addArgs...)...)
 	if out, err := addCmd.CombinedOutput(); err != nil {
 		return publishResult{
 			name:   name,
@@ -271,4 +310,34 @@ func publishLibrary(name, path string) publishResult {
 	}
 
 	return publishResult{name: name, published: true, output: output}
+}
+
+func publishStageArgs(stageAll bool, managedPaths []string) []string {
+	if stageAll {
+		return []string{"add", "-A"}
+	}
+	if len(managedPaths) == 0 {
+		return nil
+	}
+	args := []string{"add", "-A", "--"}
+	return append(args, managedPaths...)
+}
+
+func publishManagedPaths(path string) ([]string, error) {
+	var paths []string
+	for _, candidate := range publishManagedPathCandidates {
+		if _, err := os.Stat(filepath.Join(path, candidate)); err == nil {
+			paths = append(paths, candidate)
+		} else if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		} else if publishPathTracked(path, candidate) {
+			paths = append(paths, candidate)
+		}
+	}
+	return paths, nil
+}
+
+func publishPathTracked(path, candidate string) bool {
+	out, err := exec.Command("git", "-C", path, "ls-files", "--", candidate).Output()
+	return err == nil && strings.TrimSpace(string(out)) != ""
 }

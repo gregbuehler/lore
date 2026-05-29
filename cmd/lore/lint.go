@@ -14,6 +14,7 @@ import (
 
 var lintAll bool
 var lintFix bool
+var writeLintFile = os.WriteFile
 
 // vaultLintCmd lints the personal vault (registered under "vault lint").
 var vaultLintCmd = &cobra.Command{
@@ -162,7 +163,7 @@ func lintVault(dir string) int {
 			if lintFix {
 				fm := inferFrontmatter(rel)
 				fixed := fm + content
-				if err := os.WriteFile(path, []byte(fixed), 0644); err != nil {
+				if err := writeLintFile(path, []byte(fixed), 0644); err != nil {
 					fmt.Printf("  [missing-frontmatter] %s (fix failed: %v)\n", rel, err)
 					issues++
 				} else {
@@ -255,7 +256,7 @@ func lintLibrary(libPath string, host ...string) int {
 			if lintFix {
 				fixed := fixLocalPaths(content, gitHost)
 				if fixed != content {
-					if err := os.WriteFile(path, []byte(fixed), 0644); err != nil {
+					if err := writeLintFile(path, []byte(fixed), 0644); err != nil {
 						fmt.Printf("  [local-path] %s (%d refs, fix failed: %v)\n", rel, localPaths, err)
 						issues++
 					} else {
@@ -410,7 +411,7 @@ func lintIndexStaleness(libPath string, actualPages int) int {
 
 // Required sections by entity type. Pages must have these H2 headings.
 var requiredSections = map[string][]string{
-	"service": {"## What It Does", "## Known Issues", "## Change Log"},
+	"service":     {"## What It Does", "## Known Issues", "## Change Log"},
 	"environment": {"## Inventory Data", "## Operational Notes", "## Incident History"},
 }
 
@@ -474,7 +475,10 @@ func lintFormat(path, rel, content, entityType string) int {
 	issues += lintFrontmatterOrder(rel, content, entityType)
 
 	if needsWrite {
-		os.WriteFile(path, []byte(content), 0644)
+		if err := writeLintFile(path, []byte(content), 0644); err != nil {
+			fmt.Printf("  [fix-write] %s (fix failed: %v)\n", rel, err)
+			issues++
+		}
 	}
 	return issues
 }
