@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -171,30 +172,42 @@ func LoadWithLocal(vaultPath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	applyLocalOverrides(cfg, vaultPath)
+	if err := applyLocalOverrides(cfg, vaultPath); err != nil {
+		return nil, err
+	}
 	applyEnvOverrides(cfg)
 	return cfg, nil
 }
 
-func applyLocalOverrides(cfg *Config, vaultPath string) {
+func applyLocalOverrides(cfg *Config, vaultPath string) error {
 	data, err := os.ReadFile(LocalPath(vaultPath))
 	if err != nil {
-		return
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("reading local config: %w", err)
 	}
 	var local LocalConfig
 	if err := yaml.Unmarshal(data, &local); err != nil {
-		return
+		return fmt.Errorf("parsing local config: %w", err)
 	}
 	mergeAgentConfig(&cfg.Agent, local.Agent)
+	return nil
 }
 
 func applyEnvOverrides(cfg *Config) {
-	mergeAgentConfig(&cfg.Agent, AgentConfig{
+	env, _ := AgentEnvOverrides()
+	mergeAgentConfig(&cfg.Agent, env)
+}
+
+func AgentEnvOverrides() (AgentConfig, bool) {
+	cfg := AgentConfig{
 		Provider: os.Getenv("LORE_AGENT_PROVIDER"),
 		Command:  os.Getenv("LORE_AGENT_COMMAND"),
 		Sandbox:  os.Getenv("LORE_AGENT_SANDBOX"),
 		Approval: os.Getenv("LORE_AGENT_APPROVAL"),
-	})
+	}
+	return cfg, cfg.Provider != "" || cfg.Command != "" || cfg.Sandbox != "" || cfg.Approval != ""
 }
 
 func mergeAgentConfig(dst *AgentConfig, src AgentConfig) {

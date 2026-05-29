@@ -17,7 +17,7 @@ type ScaffoldOptions struct {
 	Host          string
 	Entities      []string // e.g., ["people", "services", "tooling", "infrastructure"]
 	Adopt         bool
-	AgentProvider string // claude, codex, custom, none
+	AgentProvider string // claude, codex, none
 }
 
 // Scaffold creates a new vault directory structure.
@@ -44,7 +44,7 @@ func Scaffold(vaultPath string, opts ScaffoldOptions) error {
 
 	agentProvider := normalizeAgentProvider(opts.AgentProvider)
 	if agentProvider == "" {
-		return fmt.Errorf("unsupported agent provider %q (use claude, codex, custom, or none)", opts.AgentProvider)
+		return fmt.Errorf("unsupported agent provider %q (use claude, codex, or none)", opts.AgentProvider)
 	}
 
 	// Create directories
@@ -170,7 +170,7 @@ func normalizeAgentProvider(provider string) string {
 	switch normalized {
 	case "":
 		return "claude"
-	case "claude", "codex", "custom", "none":
+	case "claude", "codex", "none":
 		return normalized
 	default:
 		return ""

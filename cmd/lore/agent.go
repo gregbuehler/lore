@@ -24,7 +24,10 @@ var agentLocalCmd = &cobra.Command{
 	Short: "Write or inspect machine-local agent preferences",
 	Long: `Writes .lore/local.yaml for this machine without changing shared
 .lore/config.yaml. Use this when the same vault should run Codex on one
-machine and Claude on another.`,
+machine and Claude on another.
+
+Generated local configs are supported for claude, codex, and none. Custom
+agent configs require an explicit command and should be edited manually.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		vaultPath, err := config.FindVault()
@@ -92,7 +95,13 @@ func printAgentLocalStatus(vaultPath string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Shared:    %s\n", describeAgent(shared.Agent))
+	type statusRow struct {
+		label string
+		value string
+	}
+	rows := []statusRow{
+		{label: "Shared", value: describeAgent(shared.Agent)},
+	}
 	if _, err := os.Stat(config.LocalPath(vaultPath)); err == nil {
 		var local config.LocalConfig
 		data, err := os.ReadFile(config.LocalPath(vaultPath))
@@ -102,11 +111,24 @@ func printAgentLocalStatus(vaultPath string) error {
 		if err := yaml.Unmarshal(data, &local); err != nil {
 			return err
 		}
-		fmt.Printf("Local:     %s\n", describeAgent(local.Agent))
+		rows = append(rows, statusRow{label: "Local", value: describeAgent(local.Agent)})
 	} else {
-		fmt.Println("Local:     none")
+		rows = append(rows, statusRow{label: "Local", value: "none"})
 	}
-	fmt.Printf("Effective: %s\n", describeAgent(effective.Agent))
+	if env, ok := config.AgentEnvOverrides(); ok {
+		rows = append(rows, statusRow{label: "Environment", value: describeAgent(env)})
+	}
+	rows = append(rows, statusRow{label: "Effective", value: describeAgent(effective.Agent)})
+
+	width := 0
+	for _, row := range rows {
+		if n := len(row.label) + 1; n > width {
+			width = n
+		}
+	}
+	for _, row := range rows {
+		fmt.Printf("%-*s %s\n", width, row.label+":", row.value)
+	}
 	return nil
 }
 

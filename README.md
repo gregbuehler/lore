@@ -303,7 +303,7 @@ Maintenance commands use `agent.provider` to decide how agent work is executed. 
 |----------|----------|
 | `claude` | Run Claude non-interactively with `claude -p <prompt>`. |
 | `codex` | Run Codex non-interactively with `codex exec`, send the prompt on stdin, and pass `--cd <workdir>`. Sandbox and approval settings are configurable. |
-| `custom` | Run a user-supplied command for sites that wrap or proxy an agent. |
+| `custom` | Run a user-supplied command for sites that wrap or proxy an agent. Requires an explicit `agent.command`. |
 | `none` | Do not invoke an agent; commands stop before synthesis. |
 
 Dangerous permission bypass is always opt-in. When enabled, lore maps it to the provider-specific dangerous flag, such as Claude's `--dangerously-skip-permissions` or Codex's equivalent unsafe bypass flag. Leave it disabled for normal local or CI maintenance.
@@ -334,6 +334,10 @@ lore agent local claude
 lore agent local none
 lore agent local status
 ```
+
+`lore agent local` only generates built-in provider configs. For `custom`,
+edit `.lore/local.yaml` manually and include `agent.command` plus optional
+`agent.args`.
 
 ### CI Automation
 

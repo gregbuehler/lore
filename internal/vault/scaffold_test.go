@@ -86,6 +86,24 @@ func TestScaffoldNoneProviderWritesNoAgentFiles(t *testing.T) {
 	assertPathMissing(t, filepath.Join(vaultPath, "AGENTS.md"))
 }
 
+func TestScaffoldRejectsCustomProvider(t *testing.T) {
+	vaultPath := filepath.Join(t.TempDir(), "vault")
+
+	err := Scaffold(vaultPath, ScaffoldOptions{
+		Name:          "Test User",
+		Email:         "test@example.com",
+		Entities:      []string{"services"},
+		AgentProvider: "custom",
+	})
+	if err == nil {
+		t.Fatal("expected custom provider to fail")
+	}
+	if !strings.Contains(err.Error(), `unsupported agent provider "custom"`) {
+		t.Fatalf("error = %q, want unsupported custom provider", err)
+	}
+	assertPathMissing(t, filepath.Join(vaultPath, config.LoreDir, config.ConfigFile))
+}
+
 func mustLoadConfig(t *testing.T, vaultPath string) *config.Config {
 	t.Helper()
 	cfg, err := config.Load(vaultPath)
