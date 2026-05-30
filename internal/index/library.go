@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/gbuehler/lore/internal/pathutil"
 )
 
 // PageEntry holds extracted metadata from a single markdown page.
@@ -104,7 +106,7 @@ func BuildLibraryIndex(libPath string) error {
 	}
 
 	indexPath := filepath.Join(wikiDir, "index.md")
-	if err := os.WriteFile(indexPath, []byte(b.String()), 0644); err != nil {
+	if err := pathutil.AtomicWriteFile(indexPath, []byte(b.String()), 0644); err != nil {
 		return fmt.Errorf("writing index: %w", err)
 	}
 	return nil

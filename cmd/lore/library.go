@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 
@@ -94,7 +95,7 @@ default_ttl:
 #       - path: "directory/{entity}/**"
 #         maps_to: entity_type
 `, filepath.Base(abs))
-		if err := os.WriteFile(filepath.Join(abs, "library.yaml"), []byte(libraryYaml), 0o644); err != nil {
+		if err := pathutil.AtomicWriteFile(filepath.Join(abs, "library.yaml"), []byte(libraryYaml), 0o644); err != nil {
 			return err
 		}
 
@@ -204,7 +205,7 @@ Direct edits to Wiki/ should go through PR review.
 			filepath.Base(abs), filepath.Base(abs), filepath.Base(abs),
 			filepath.Base(abs), filepath.Base(abs),
 			filepath.Base(abs), filepath.Base(abs), filepath.Base(abs))
-		if err := os.WriteFile(filepath.Join(abs, "CLAUDE.md"), []byte(claudeMd), 0o644); err != nil {
+		if err := pathutil.AtomicWriteFile(filepath.Join(abs, "CLAUDE.md"), []byte(claudeMd), 0o644); err != nil {
 			return err
 		}
 
@@ -218,7 +219,7 @@ tags:
 
 Navigation layer for this library.
 `, today)
-		if err := os.WriteFile(filepath.Join(abs, "Wiki", "index.md"), []byte(indexMd), 0o644); err != nil {
+		if err := pathutil.AtomicWriteFile(filepath.Join(abs, "Wiki", "index.md"), []byte(indexMd), 0o644); err != nil {
 			return err
 		}
 
@@ -227,7 +228,7 @@ Navigation layer for this library.
 sources/incoming/
 .lore/
 `
-		if err := os.WriteFile(filepath.Join(abs, ".gitignore"), []byte(gitignore), 0o644); err != nil {
+		if err := pathutil.AtomicWriteFile(filepath.Join(abs, ".gitignore"), []byte(gitignore), 0o644); err != nil {
 			return err
 		}
 
@@ -238,7 +239,7 @@ Append-only record of maintenance operations.
 
 ---
 `
-		if err := os.WriteFile(filepath.Join(abs, "log.md"), []byte(logMd), 0o644); err != nil {
+		if err := pathutil.AtomicWriteFile(filepath.Join(abs, "log.md"), []byte(logMd), 0o644); err != nil {
 			return err
 		}
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gbuehler/lore/internal/config"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 
@@ -43,7 +44,7 @@ Examples:
 		content := generateVaultContext(cfg)
 
 		lorePath := filepath.Join(vaultPath, ".lore", "LORE.md")
-		if err := os.WriteFile(lorePath, []byte(content), 0644); err != nil {
+		if err := pathutil.AtomicWriteFile(lorePath, []byte(content), 0644); err != nil {
 			return fmt.Errorf("writing LORE.md: %w", err)
 		}
 		fmt.Printf("Updated %s\n", lorePath)
@@ -336,7 +337,7 @@ func ensureLoreImport(claudePath string) error {
 	}
 	content += "\n" + loreImportDirective + "\n"
 
-	if err := os.WriteFile(claudePath, []byte(content), 0644); err != nil {
+	if err := pathutil.AtomicWriteFile(claudePath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("could not update %s: %w", claudePath, err)
 	}
 
@@ -366,7 +367,7 @@ func ensureCodexImport(vaultPath string) error {
 	}
 	content += codexLoreImportDirective + "\n"
 
-	if err := os.WriteFile(agentsPath, []byte(content), 0644); err != nil {
+	if err := pathutil.AtomicWriteFile(agentsPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("could not update %s: %w", agentsPath, err)
 	}
 

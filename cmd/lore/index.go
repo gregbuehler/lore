@@ -8,6 +8,7 @@ import (
 
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/index"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 
@@ -160,7 +161,7 @@ func buildExcerpt(libPath string) error {
 	}
 
 	excerptPath := filepath.Join(libPath, "excerpt.md")
-	return os.WriteFile(excerptPath, []byte(b.String()), 0644)
+	return pathutil.AtomicWriteFile(excerptPath, []byte(b.String()), 0644)
 }
 
 // readSkillTrigger extracts the trigger field from a skill's frontmatter.

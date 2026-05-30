@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gbuehler/lore/internal/config"
+	"github.com/gbuehler/lore/internal/pathutil"
 )
 
 // ScaffoldOptions contains the user-provided configuration for vault init.
@@ -199,7 +200,7 @@ func writeIfNotExists(path, content string) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil // already exists
 	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	return pathutil.AtomicWriteFile(path, []byte(content), 0o644)
 }
 
 // entityDirName returns the Wiki subdirectory name for an entity type.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gbuehler/lore/internal/config"
 	gitpkg "github.com/gbuehler/lore/internal/git"
+	"github.com/gbuehler/lore/internal/pathutil"
 )
 
 // BuildMetaIndex generates the meta-index.md from subscribed libraries.
@@ -51,7 +52,7 @@ func BuildMetaIndex(cfg *config.Config) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(metaPath), 0o755); err != nil {
 		return "", fmt.Errorf("creating meta-index dir: %w", err)
 	}
-	if err := os.WriteFile(metaPath, []byte(b.String()), 0o644); err != nil {
+	if err := pathutil.AtomicWriteFile(metaPath, []byte(b.String()), 0o644); err != nil {
 		return "", fmt.Errorf("writing meta-index: %w", err)
 	}
 	return metaPath, nil
