@@ -49,6 +49,18 @@ func TestBuildInvocationInfersCodexFromCommand(t *testing.T) {
 	}
 }
 
+func TestBuildInvocationCustomRejectsDangerousBypass(t *testing.T) {
+	_, err := BuildInvocation(
+		config.AgentConfig{Provider: "custom", Command: "runner"},
+		"/repo",
+		"prompt",
+		Options{DangerouslySkipPermissions: true},
+	)
+	if err == nil {
+		t.Fatal("expected custom agent dangerous bypass to be rejected")
+	}
+}
+
 func TestBuildInvocationProviderUsesProviderDefaultWhenCommandEmpty(t *testing.T) {
 	inv, err := BuildInvocation(config.AgentConfig{Provider: "codex"}, "/repo", "prompt", Options{})
 	if err != nil {

@@ -143,6 +143,9 @@ func buildCustomInvocation(cfg config.AgentConfig, workDir, prompt string, opts 
 	if cfg.Command == "" {
 		return Invocation{}, fmt.Errorf("custom agent command is required")
 	}
+	if opts.DangerouslySkipPermissions {
+		return Invocation{}, fmt.Errorf("custom agent does not support dangerous permission bypass; configure explicit custom args instead")
+	}
 	args := append([]string{}, cfg.Args...)
 	stdin := prompt
 	for i, arg := range args {
