@@ -11,24 +11,27 @@ import (
 func TestFormatPublishStatusesIncludesEachTargetPorcelain(t *testing.T) {
 	output := formatPublishStatuses([]publishChange{
 		{
-			name:   "services",
-			path:   "/tmp/services",
-			status: " M README.md\n?? runbook.md\n",
+			name:            "services",
+			path:            "/tmp/services",
+			stageableStatus: " M README.md\n",
+			skippedStatus:   "?? runbook.md\n",
 		},
 		{
-			name:   "infra",
-			path:   "/tmp/infra",
-			status: "A  deploy.yaml\n",
+			name:            "infra",
+			path:            "/tmp/infra",
+			stageableStatus: "A  deploy.yaml\n",
 		},
 	}, false)
 
 	for _, want := range []string{
 		"Pending changes to publish:",
 		"services (/tmp/services)",
-		"   M README.md",
-		"  ?? runbook.md",
+		"staged:",
+		"      M README.md",
+		"not staged by lore:",
+		"      ?? runbook.md",
 		"infra (/tmp/infra)",
-		"  A  deploy.yaml",
+		"      A  deploy.yaml",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("formatPublishStatuses() missing %q in:\n%s", want, output)
@@ -38,9 +41,9 @@ func TestFormatPublishStatusesIncludesEachTargetPorcelain(t *testing.T) {
 
 func TestFormatPublishStatusesDescribesManagedPathStaging(t *testing.T) {
 	output := formatPublishStatuses([]publishChange{{
-		name:   "services",
-		path:   "/tmp/services",
-		status: " M README.md\n",
+		name:            "services",
+		path:            "/tmp/services",
+		stageableStatus: " M README.md\n",
 	}}, false)
 
 	if !strings.Contains(output, "Staging mode: lore-managed library content paths only") {
@@ -53,9 +56,9 @@ func TestFormatPublishStatusesDescribesManagedPathStaging(t *testing.T) {
 
 func TestFormatPublishStatusesDescribesAllRepoStaging(t *testing.T) {
 	output := formatPublishStatuses([]publishChange{{
-		name:   "services",
-		path:   "/tmp/services",
-		status: " M README.md\n",
+		name:            "services",
+		path:            "/tmp/services",
+		stageableStatus: " M README.md\n",
 	}}, true)
 
 	if !strings.Contains(output, "Staging mode: all repository changes (--all / git add -A)") {
@@ -100,6 +103,12 @@ func TestPublishManagedPathsIncludesExistingLorePaths(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Readme\n"), 0o644); err != nil {
 		t.Fatalf("write README.md: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agents\n"), 0o644); err != nil {
+		t.Fatalf("write AGENTS.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".DS_Store\n"), 0o644); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
 
 	paths, err := publishManagedPaths(dir)
 	if err != nil {
@@ -107,13 +116,23 @@ func TestPublishManagedPathsIncludesExistingLorePaths(t *testing.T) {
 	}
 
 	got := strings.Join(paths, "\x00")
-	for _, want := range []string{"Wiki", "library.yaml"} {
+	for _, want := range []string{"Wiki", "library.yaml", "README.md", "AGENTS.md", ".gitignore"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("publishManagedPaths() = %#v, want %q", paths, want)
 		}
 	}
-	if strings.Contains(got, "README.md") {
-		t.Fatalf("publishManagedPaths() = %#v, did not want README.md", paths)
+}
+
+func TestSplitPublishStatusSeparatesManagedAndUnmanagedPaths(t *testing.T) {
+	stageable, skipped := splitPublishStatus(" M Wiki/page.md\n?? scratch.txt\nR  old.md -> README.md\n", []string{"Wiki", "README.md"})
+
+	for _, want := range []string{" M Wiki/page.md", "R  old.md -> README.md"} {
+		if !strings.Contains(stageable, want) {
+			t.Fatalf("stageable status = %q, want %q", stageable, want)
+		}
+	}
+	if !strings.Contains(skipped, "?? scratch.txt") {
+		t.Fatalf("skipped status = %q, want unmanaged path", skipped)
 	}
 }
 

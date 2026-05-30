@@ -28,12 +28,17 @@ var publishManagedPathCandidates = []string{
 	"excerpt.md",
 	"log.md",
 	"CLAUDE.md",
+	"AGENTS.md",
+	"README.md",
+	".gitignore",
 }
 
 type publishChange struct {
-	name   string
-	path   string
-	status string
+	name            string
+	path            string
+	stageableStatus string
+	skippedStatus   string
+	managedPaths    []string
 }
 
 type publishResult struct {
@@ -126,11 +131,30 @@ Examples:
 				continue
 			}
 
-			changes = append(changes, publishChange{
-				name:   sub.Name,
-				path:   sub.Path,
-				status: string(statusOut),
-			})
+			change := publishChange{
+				name: sub.Name,
+				path: sub.Path,
+			}
+			if publishAll {
+				change.stageableStatus = string(statusOut)
+			} else {
+				managedPaths, err := publishManagedPaths(sub.Path)
+				if err != nil {
+					results = append(results, publishResult{
+						name: sub.Name,
+						err:  fmt.Errorf("finding managed paths: %w", err),
+					})
+					continue
+				}
+				change.managedPaths = managedPaths
+				change.stageableStatus, change.skippedStatus = splitPublishStatus(string(statusOut), managedPaths)
+				if strings.TrimSpace(change.stageableStatus) == "" {
+					fmt.Printf("  skipping %s (no lore-managed changes to publish)\n", sub.Name)
+					results = append(results, publishResult{name: sub.Name, noChanges: true})
+					continue
+				}
+			}
+			changes = append(changes, change)
 		}
 
 		// If a specific library was requested but never matched, report it.
@@ -159,7 +183,7 @@ Examples:
 
 				for _, change := range changes {
 					fmt.Printf("  publishing %s...\n", change.name)
-					results = append(results, publishLibrary(change.name, change.path, publishAll))
+					results = append(results, publishLibrary(change.name, change.path, publishAll, change.managedPaths))
 				}
 			}
 		}
@@ -234,14 +258,59 @@ func formatPublishStatuses(changes []publishChange, stageAll bool) string {
 	}
 	for _, change := range changes {
 		fmt.Fprintf(&b, "  %s (%s)\n", change.name, change.path)
-		for _, line := range strings.Split(strings.TrimRight(change.status, "\n"), "\n") {
-			if line == "" {
-				continue
-			}
-			fmt.Fprintf(&b, "  %s\n", line)
+		writePublishStatusLines(&b, "staged", change.stageableStatus)
+		if !stageAll {
+			writePublishStatusLines(&b, "not staged by lore", change.skippedStatus)
 		}
 	}
 	return b.String()
+}
+
+func writePublishStatusLines(b *strings.Builder, label, status string) {
+	if strings.TrimSpace(status) == "" {
+		return
+	}
+	fmt.Fprintf(b, "    %s:\n", label)
+	for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		fmt.Fprintf(b, "      %s\n", line)
+	}
+}
+
+func splitPublishStatus(status string, managedPaths []string) (stageable string, skipped string) {
+	var stageableLines []string
+	var skippedLines []string
+	for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		if publishStatusLineMatches(line, managedPaths) {
+			stageableLines = append(stageableLines, line)
+		} else {
+			skippedLines = append(skippedLines, line)
+		}
+	}
+	return strings.Join(stageableLines, "\n"), strings.Join(skippedLines, "\n")
+}
+
+func publishStatusLineMatches(line string, managedPaths []string) bool {
+	if len(line) < 4 {
+		return false
+	}
+	path := strings.TrimSpace(line[3:])
+	if strings.Contains(path, " -> ") {
+		parts := strings.Split(path, " -> ")
+		path = strings.TrimSpace(parts[len(parts)-1])
+	}
+	path = strings.Trim(path, `"`)
+	for _, managed := range managedPaths {
+		if path == managed || strings.HasPrefix(path, managed+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func confirmPublish(in io.Reader, out io.Writer) (bool, error) {
@@ -256,9 +325,8 @@ func confirmPublish(in io.Reader, out io.Writer) (bool, error) {
 	return answer == "y" || answer == "yes", nil
 }
 
-func publishLibrary(name, path string, stageAll bool) publishResult {
-	var stagePaths []string
-	if !stageAll {
+func publishLibrary(name, path string, stageAll bool, stagePaths []string) publishResult {
+	if !stageAll && len(stagePaths) == 0 {
 		var err error
 		stagePaths, err = publishManagedPaths(path)
 		if err != nil {
