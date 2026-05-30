@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gbuehler/lore/internal/pathutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -238,7 +239,11 @@ func (c *Config) Save(vaultPath string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
-	return os.WriteFile(path, data, 0o644)
+	return writeConfigFile(path, data)
+}
+
+func writeConfigFile(path string, data []byte) error {
+	return pathutil.AtomicWriteFile(path, data, 0o644)
 }
 
 // FindVault locates the vault directory. Checks LORE_VAULT env first, then

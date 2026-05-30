@@ -102,70 +102,11 @@ lore library skills             # list available skills
 
 ## Commands
 
-### Vault
+See [docs/commands.md](docs/commands.md), generated from the Cobra command tree.
+Refresh it with:
 
-```
-lore vault init [path]         Create a new vault (--adopt for existing dirs)
-lore vault status              Show vault and library status
-lore vault lint [--fix]        Check vault page health
-lore vault context             Generate .lore/LORE.md agent context
-```
-
-### Libraries
-
-```
-lore library init <path>       Scaffold a new shared library
-lore library index [name]      Rebuild Wiki/index.md + excerpt.md
-lore library lint <name>       Check library page health (--fix, --all)
-lore library skills [name]     List or read library skills
-lore library seed <dir> <lib>  Bulk import vault pages into a library
-lore library publish <file>    Publish a single file to a library
-lore library review <name>     Surface daily log evidence not yet in library
-lore library maintain <name>   Synthesize daily log evidence into pages
-lore library watch <name>      Update pages from source repo changes
-lore library register          Register a library in the registry
-```
-
-### Subscriptions
-
-```
-lore subscribe <repo|path>     Subscribe to a library
-lore unsubscribe <name>        Unsubscribe from a library
-lore update [name]             Pull latest for all or one library
-lore sync                      Git-pull all libraries + trigger reindex
-lore search <query>            Raw grep-style markdown search
-lore discover                  List available libraries from registries
-```
-
-### Daemon & Search
-
-```
-lore daemon start              Start the index daemon
-lore daemon stop               Stop it
-lore daemon status             Check if running + index stats
-lore daemon reindex            Force full reindex
-lore daemon install            Install as login service (launchd/systemd)
-lore daemon uninstall          Remove the login service
-lore query <terms>             BM25 full-text search
-lore query --graph <node>      Outgoing graph edges from a node
-lore query --backlinks <node>  Incoming edges to a node
-lore context <node>            Assembled context (page + edges + mentions)
-lore ui                        Launch terminal UI
-```
-
-### Content
-
-```
-lore entity create <type> <name>   Create a new Wiki entity page
-lore entity update <path>          Update entity frontmatter
-lore entity get <path>             Print entity details
-lore entity delete <path>          Delete an entity page
-lore entity list [--type <t>]      List entities
-lore note <text>                   Append to today's daily log
-lore thread new <topic>            Scaffold an investigation thread
-lore fix-links [--dry-run]         Resolve broken wikilinks across vault
-lore publish [library]             Commit+push managed library changes
-lore publish [library] --all       Commit+push all repository changes
+```bash
+lore docs commands docs/commands.md
 ```
 
 ## Daemon Architecture
@@ -186,7 +127,7 @@ The lore daemon is a lightweight background process that provides fast search an
 - **Graph**: `edges` table storing typed relationships (owner, depends_on, deployed_in, mentions) extracted from wikilinks in section context
 - **Watcher**: fsnotify-based recursive file watching with 500ms debounce
 - **Resolver**: Obsidian-style shortest-path wikilink resolution (folder expansion, proximity ranking, ancestor walking)
-- **Protocol**: Length-prefixed JSON over Unix socket (`~/.lore/daemon.sock`)
+- **Protocol**: Length-prefixed JSON over Unix socket (`~/.local/share/lore/daemon.sock`, or `LORE_SOCKET`)
 
 The daemon auto-starts on first query when `LORE_VAULT` is set. All CLI commands fall back to direct SQLite access if the daemon is unavailable.
 

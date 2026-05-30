@@ -16,6 +16,7 @@ import (
 	"github.com/gbuehler/lore/internal/agent"
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/index"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -197,7 +198,7 @@ Examples:
 			pkg := buildWatchContextPackage(ew.name, ent.entityType, string(currentPage), ew.changes, toneRules, ent.lastUpdated)
 
 			pkgPath := filepath.Join(incomingDir, fmt.Sprintf("watch-%s-%s.md", ew.name, time.Now().Format("2006-01-02")))
-			if err := os.WriteFile(pkgPath, []byte(pkg), 0644); err != nil {
+			if err := pathutil.AtomicWriteFile(pkgPath, []byte(pkg), 0644); err != nil {
 				fmt.Printf("  skip %s: writing package: %v\n", ew.name, err)
 				continue
 			}

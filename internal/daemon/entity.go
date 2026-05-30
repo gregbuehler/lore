@@ -50,12 +50,12 @@ func (d *Daemon) dispatchEntityCreate(req *Request) *Response {
 	today := time.Now().Format("2006-01-02")
 	content := entitypkg.BuildContent(req.EntityType, title, today)
 
-	if err := os.WriteFile(destPath, []byte(content), 0644); err != nil {
+	if err := pathutil.AtomicWriteFile(destPath, []byte(content), 0644); err != nil {
 		return &Response{OK: false, Error: fmt.Sprintf("writing entity file: %v", err)}
 	}
 
 	// Reindex immediately
-	if err := d.state.IndexFile(destPath); err != nil {
+	if err := d.state.RebuildIndexForPath(destPath); err != nil {
 		// Non-fatal — file was written, index will catch up via watcher
 		fmt.Printf("lore daemon: warning: reindex after create failed: %v\n", err)
 	}
@@ -109,12 +109,12 @@ func (d *Daemon) dispatchEntityUpdate(req *Request) *Response {
 		}
 	}
 
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+	if err := pathutil.AtomicWriteFile(filePath, []byte(content), 0644); err != nil {
 		return &Response{OK: false, Error: fmt.Sprintf("writing entity file: %v", err)}
 	}
 
 	// Reindex immediately
-	if err := d.state.IndexFile(filePath); err != nil {
+	if err := d.state.RebuildIndexForPath(filePath); err != nil {
 		fmt.Printf("lore daemon: warning: reindex after update failed: %v\n", err)
 	}
 
@@ -188,12 +188,12 @@ func (d *Daemon) dispatchEntityDelete(req *Request) *Response {
 		backlinkPaths = append(backlinkPaths, b.RelPath)
 	}
 
-	// Remove from index first
-	d.state.RemoveFile(filePath)
-
 	// Delete the file
 	if err := os.Remove(filePath); err != nil {
 		return &Response{OK: false, Error: fmt.Sprintf("deleting entity file: %v", err)}
+	}
+	if err := d.state.RebuildIndexForPath(filePath); err != nil {
+		fmt.Printf("lore daemon: warning: reindex after delete failed: %v\n", err)
 	}
 
 	msg := fmt.Sprintf("deleted: %s", filePath)

@@ -48,4 +48,5 @@ func init() {
 	rootCmd.AddCommand(noteCmd)
 	rootCmd.AddCommand(entityCmd)
 	rootCmd.AddCommand(fixLinksCmd)
+	rootCmd.AddCommand(docsCmd)
 }

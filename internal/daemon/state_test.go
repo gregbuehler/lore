@@ -9,7 +9,7 @@ import (
 	"github.com/gbuehler/lore/internal/store"
 )
 
-func TestIndexFileClearsOutgoingEdgesWhenWikilinksRemoved(t *testing.T) {
+func TestRebuildIndexForPathClearsOutgoingEdgesWhenWikilinksRemoved(t *testing.T) {
 	vault := t.TempDir()
 	dbPath := filepath.Join(t.TempDir(), "index.db")
 
@@ -33,7 +33,7 @@ func TestIndexFileClearsOutgoingEdgesWhenWikilinksRemoved(t *testing.T) {
 	if err := os.WriteFile(sourcePath, []byte("# Source\n\nSee [[Target]].\n"), 0o644); err != nil {
 		t.Fatalf("write source with wikilink: %v", err)
 	}
-	if err := state.IndexFile(sourcePath); err != nil {
+	if err := state.RebuildIndexForPath(sourcePath); err != nil {
 		t.Fatalf("index source with wikilink: %v", err)
 	}
 
@@ -48,7 +48,7 @@ func TestIndexFileClearsOutgoingEdgesWhenWikilinksRemoved(t *testing.T) {
 	if err := os.WriteFile(sourcePath, []byte("# Source\n\nNo outgoing links remain.\n"), 0o644); err != nil {
 		t.Fatalf("write source without wikilink: %v", err)
 	}
-	if err := state.IndexFile(sourcePath); err != nil {
+	if err := state.RebuildIndexForPath(sourcePath); err != nil {
 		t.Fatalf("index source without wikilink: %v", err)
 	}
 
@@ -58,6 +58,54 @@ func TestIndexFileClearsOutgoingEdgesWhenWikilinksRemoved(t *testing.T) {
 	}
 	if len(neighbors) != 0 {
 		t.Fatalf("neighbors after removing last wikilink = %#v, want no outgoing edges", neighbors)
+	}
+}
+
+func TestRebuildIndexForPathRefreshesResolverForNewTargets(t *testing.T) {
+	vault := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+
+	db, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close store: %v", err)
+		}
+	})
+
+	state := &State{
+		Store:     db,
+		VaultPath: vault,
+		Paths:     []string{vault},
+	}
+
+	sourcePath := filepath.Join(vault, "Source.md")
+	if err := os.WriteFile(sourcePath, []byte("# Source\n\nSee [[Target]].\n"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	if err := state.RebuildIndexForPath(sourcePath); err != nil {
+		t.Fatalf("index source: %v", err)
+	}
+
+	targetPath := filepath.Join(vault, "Wiki", "Services", "Target.md")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		t.Fatalf("mkdir target dir: %v", err)
+	}
+	if err := os.WriteFile(targetPath, []byte("# Target\n"), 0o644); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	if err := state.RebuildIndexForPath(targetPath); err != nil {
+		t.Fatalf("index target: %v", err)
+	}
+
+	backlinks, err := db.Backlinks("Wiki/Services/Target", "")
+	if err != nil {
+		t.Fatalf("query backlinks: %v", err)
+	}
+	if len(backlinks) != 1 || backlinks[0].RelPath != "Source" {
+		t.Fatalf("backlinks = %#v, want Source linking to resolved target", backlinks)
 	}
 }
 

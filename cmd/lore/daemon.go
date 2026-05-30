@@ -14,6 +14,7 @@ import (
 
 	"github.com/gbuehler/lore/internal/config"
 	"github.com/gbuehler/lore/internal/daemon"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 
@@ -75,7 +76,7 @@ var daemonStopCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("daemon not running (no pid file)")
 		}
-		pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+		pid, err := parseDaemonPIDFile(data)
 		if err != nil {
 			return fmt.Errorf("invalid pid file")
 		}
@@ -89,6 +90,14 @@ var daemonStopCmd = &cobra.Command{
 		fmt.Printf("Sent SIGTERM to daemon (pid %d)\n", pid)
 		return nil
 	},
+}
+
+func parseDaemonPIDFile(data []byte) (int, error) {
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return 0, fmt.Errorf("empty pid file")
+	}
+	return strconv.Atoi(strings.TrimSpace(lines[0]))
 }
 
 var daemonStatusCmd = &cobra.Command{
@@ -251,7 +260,7 @@ func installDarwin(vaultPath, binPath string) error {
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
 		return fmt.Errorf("creating LaunchAgents directory: %w", err)
 	}
-	if err := os.WriteFile(plistPath, buf.Bytes(), 0o644); err != nil {
+	if err := pathutil.AtomicWriteFile(plistPath, buf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("writing plist: %w", err)
 	}
 	fmt.Printf("Wrote %s\n", plistPath)
@@ -359,7 +368,7 @@ func installLinux(vaultPath, binPath string) error {
 	if err := os.MkdirAll(filepath.Dir(unitPath), 0o755); err != nil {
 		return fmt.Errorf("creating systemd user unit directory: %w", err)
 	}
-	if err := os.WriteFile(unitPath, buf.Bytes(), 0o644); err != nil {
+	if err := pathutil.AtomicWriteFile(unitPath, buf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("writing service unit: %w", err)
 	}
 	fmt.Printf("Wrote %s\n", unitPath)

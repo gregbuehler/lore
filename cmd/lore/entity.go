@@ -126,7 +126,7 @@ Examples:
 		today := time.Now().Format("2006-01-02")
 		content := entitypkg.BuildContent(entityCreateType, title, today)
 
-		if err := os.WriteFile(destPath, []byte(content), 0644); err != nil {
+		if err := writeEntityFile(destPath, content); err != nil {
 			return fmt.Errorf("writing entity file: %w", err)
 		}
 
@@ -251,13 +251,17 @@ Examples:
 			}
 		}
 
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		if err := writeEntityFile(filePath, content); err != nil {
 			return fmt.Errorf("writing entity file: %w", err)
 		}
 
 		fmt.Printf("updated: %s\n", filePath)
 		return nil
 	},
+}
+
+func writeEntityFile(path, content string) error {
+	return pathutil.AtomicWriteFile(path, []byte(content), 0o644)
 }
 
 // --------------------------------------------------------------------------

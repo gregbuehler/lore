@@ -63,23 +63,17 @@ func (s *State) buildIndexLocked() error {
 	return nil
 }
 
-// IndexFile parses and indexes a single file (for incremental updates).
-func (s *State) IndexFile(path string) error {
+// RebuildIndexForPath rebuilds the full index when path is under a configured
+// indexed root. The index is rebuilt as a whole because wikilinks can resolve
+// differently after any file create, update, rename, or removal.
+func (s *State) RebuildIndexForPath(path string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	root := s.rootFor(path)
-	if root == "" {
+	if s.rootFor(path) == "" {
 		return nil
 	}
-	return s.indexSingleFile(path, root)
-}
-
-// RemoveFile removes a file from the store.
-func (s *State) RemoveFile(path string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.Store.RemoveDocument(path)
+	return s.buildIndexLocked()
 }
 
 // skipIndexFile returns true for files that are infrastructure, not content.

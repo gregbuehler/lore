@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gbuehler/lore/internal/config"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 
@@ -113,7 +114,7 @@ Examples:
 			if seedDryRun {
 				fmt.Printf("  [dry-run] %s\n", filepath.Base(f))
 			} else {
-				if err := os.WriteFile(dest, []byte(transformed), 0644); err != nil {
+				if err := pathutil.AtomicWriteFile(dest, []byte(transformed), 0644); err != nil {
 					fmt.Fprintf(os.Stderr, "  skip %s: %v\n", filepath.Base(f), err)
 					skipped++
 					continue

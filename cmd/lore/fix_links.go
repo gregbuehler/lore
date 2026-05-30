@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gbuehler/lore/internal/config"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/gbuehler/lore/internal/resolve"
 	"github.com/spf13/cobra"
 )
@@ -200,7 +201,7 @@ func fixLinksInFile(path, rel string, resolver *resolve.Resolver, dryRun bool) (
 	reportLinkFixes(rel, original, result)
 
 	if !dryRun {
-		if err := os.WriteFile(path, []byte(result), fi_mode(path)); err != nil {
+		if err := pathutil.AtomicWriteFile(path, []byte(result), fi_mode(path)); err != nil {
 			return 0, fmt.Errorf("writing %s: %w", path, err)
 		}
 	}

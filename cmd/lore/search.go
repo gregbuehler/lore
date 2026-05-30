@@ -47,15 +47,7 @@ queries, use 'lore query'.`,
 }
 
 func searchWithRg(rgPath, query string, paths []string) error {
-	args := []string{
-		"--type", "md",
-		"--color", "always",
-		"--heading",
-		"--line-number",
-		"--smart-case",
-		query,
-	}
-	args = append(args, paths...)
+	args := rgSearchArgs(query, paths)
 
 	cmd := exec.Command(rgPath, args...)
 	cmd.Stdout = os.Stdout
@@ -68,9 +60,21 @@ func searchWithRg(rgPath, query string, paths []string) error {
 	return err
 }
 
+func rgSearchArgs(query string, paths []string) []string {
+	args := []string{
+		"--type", "md",
+		"--color", "always",
+		"--heading",
+		"--line-number",
+		"--smart-case",
+		"--",
+		query,
+	}
+	return append(args, paths...)
+}
+
 func searchWithGrep(query string, paths []string) error {
-	args := []string{"-r", "-n", "--include=*.md", "-i", query}
-	args = append(args, paths...)
+	args := grepSearchArgs(query, paths)
 
 	cmd := exec.Command("grep", args...)
 	cmd.Stdout = os.Stdout
@@ -81,4 +85,9 @@ func searchWithGrep(query string, paths []string) error {
 		return nil
 	}
 	return err
+}
+
+func grepSearchArgs(query string, paths []string) []string {
+	args := []string{"-r", "-n", "--include=*.md", "-i", "--", query}
+	return append(args, paths...)
 }

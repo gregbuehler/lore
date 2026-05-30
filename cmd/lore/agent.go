@@ -8,6 +8,7 @@ import (
 
 	"github.com/gbuehler/lore/internal/agent"
 	"github.com/gbuehler/lore/internal/config"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -51,7 +52,7 @@ agent configs require an explicit command and should be edited manually.`,
 		if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 			return fmt.Errorf("creating .lore directory: %w", err)
 		}
-		if err := os.WriteFile(localPath, []byte(content), 0o644); err != nil {
+		if err := pathutil.AtomicWriteFile(localPath, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("writing %s: %w", localPath, err)
 		}
 		fmt.Printf("Wrote %s\n", localPath)

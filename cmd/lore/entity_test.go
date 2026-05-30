@@ -1,6 +1,8 @@
 package lore
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -33,5 +35,24 @@ func TestCheckEntityDeleteBacklinksRequiresIndexUnlessForced(t *testing.T) {
 
 	if err := checkEntityDeleteBacklinks(vault, "Wiki/Services/gateway", true); err != nil {
 		t.Fatalf("forced backlink check returned error: %v", err)
+	}
+}
+
+func TestWriteEntityFileWritesMarkdownContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Wiki", "Services", "gateway.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir entity dir: %v", err)
+	}
+
+	if err := writeEntityFile(path, "# Gateway\n"); err != nil {
+		t.Fatalf("writeEntityFile returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read entity file: %v", err)
+	}
+	if string(data) != "# Gateway\n" {
+		t.Fatalf("entity content = %q", data)
 	}
 }

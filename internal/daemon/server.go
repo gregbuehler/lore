@@ -34,7 +34,7 @@ func Start(vaultPath string, libraryPaths []string) error {
 
 	// Write PID file
 	pidContent := pidFileContent(os.Getpid(), vaultPath)
-	if err := os.WriteFile(PidPath(), []byte(pidContent), 0o644); err != nil {
+	if err := pathutil.AtomicWriteFile(PidPath(), []byte(pidContent), 0o644); err != nil {
 		return fmt.Errorf("writing pid file: %w", err)
 	}
 	defer removeIfContentMatches(PidPath(), pidContent)

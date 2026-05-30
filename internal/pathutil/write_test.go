@@ -48,3 +48,27 @@ func TestAtomicWriteFileReplacesExistingFile(t *testing.T) {
 		t.Fatalf("content = %q", data)
 	}
 }
+
+func TestAtomicWriteFileSyncsParentDirectoryAfterRename(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "generated.md")
+	calls := 0
+	oldSyncParentDir := syncParentDir
+	syncParentDir = func(dir string) error {
+		calls++
+		if dir != filepath.Dir(path) {
+			t.Fatalf("sync parent dir = %q, want %q", dir, filepath.Dir(path))
+		}
+		return nil
+	}
+	t.Cleanup(func() {
+		syncParentDir = oldSyncParentDir
+	})
+
+	if err := AtomicWriteFile(path, []byte("content"), 0o644); err != nil {
+		t.Fatalf("AtomicWriteFile returned error: %v", err)
+	}
+
+	if calls != 1 {
+		t.Fatalf("sync parent dir calls = %d, want 1", calls)
+	}
+}

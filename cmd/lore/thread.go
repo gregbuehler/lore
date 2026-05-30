@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gbuehler/lore/internal/config"
+	"github.com/gbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 
@@ -67,9 +68,13 @@ Examples:
 			return fmt.Errorf("creating Threads directory: %w", err)
 		}
 
-		// Target file path
-		filename := topic + ".md"
-		destPath := filepath.Join(threadsDir, filename)
+		destPath, err := resolveThreadPath(threadsDir, topic)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return fmt.Errorf("creating thread directory: %w", err)
+		}
 
 		// Refuse to overwrite an existing file
 		if _, err := os.Stat(destPath); err == nil {
@@ -79,13 +84,21 @@ Examples:
 		// Build frontmatter
 		content := buildThreadContent(topic, threadNewStatus, threadNewRelated)
 
-		if err := os.WriteFile(destPath, []byte(content), 0644); err != nil {
+		if err := pathutil.AtomicWriteFile(destPath, []byte(content), 0644); err != nil {
 			return fmt.Errorf("writing thread file: %w", err)
 		}
 
 		fmt.Println(destPath)
 		return nil
 	},
+}
+
+func resolveThreadPath(threadsDir, topic string) (string, error) {
+	absPath, _, err := pathutil.ResolveMarkdownUnderRoot(threadsDir, topic)
+	if err != nil {
+		return "", err
+	}
+	return absPath, nil
 }
 
 // buildThreadContent produces the full markdown content for a new thread file.

@@ -41,6 +41,18 @@ func AtomicWriteFile(path string, data []byte, perm fs.FileMode) error {
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("renaming temporary file: %w", err)
 	}
+	if err := syncParentDir(dir); err != nil {
+		return fmt.Errorf("syncing parent directory: %w", err)
+	}
 	removeTmp = false
 	return nil
+}
+
+var syncParentDir = func(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Sync()
 }

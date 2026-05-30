@@ -68,3 +68,22 @@ func TestLoadWithLocalReturnsMalformedLocalConfigError(t *testing.T) {
 		t.Fatalf("error = %v, want parsing local config", err)
 	}
 }
+
+func TestWriteConfigFileWritesYAMLData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), LoreDir, ConfigFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+
+	if err := writeConfigFile(path, []byte("vault:\n  path: /tmp/vault\n")); err != nil {
+		t.Fatalf("writeConfigFile returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if string(data) != "vault:\n  path: /tmp/vault\n" {
+		t.Fatalf("config content = %q", data)
+	}
+}

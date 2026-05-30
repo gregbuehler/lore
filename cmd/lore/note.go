@@ -1,6 +1,7 @@
 package lore
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,8 +57,8 @@ Examples:
 
 		// Compute today's date strings
 		now := time.Now()
-		dateStr := now.Format("2006-01-02")   // YYYY-MM-DD
-		monthStr := now.Format("2006-01")      // YYYY-MM
+		dateStr := now.Format("2006-01-02") // YYYY-MM-DD
+		monthStr := now.Format("2006-01")   // YYYY-MM
 
 		// Build file path: <vault>/Daily Log/YYYY-MM/YYYY-MM-DD.md
 		logDir := filepath.Join(vaultPath, "Daily Log", monthStr)
@@ -68,12 +69,8 @@ Examples:
 			return fmt.Errorf("creating daily log directory: %w", err)
 		}
 
-		// Create file with frontmatter scaffold if it doesn't exist
-		if _, err := os.Stat(logFile); os.IsNotExist(err) {
-			scaffold := fmt.Sprintf("---\ntags:\n  - daily-log\n---\n# %s\n\n", dateStr)
-			if err := os.WriteFile(logFile, []byte(scaffold), 0644); err != nil {
-				return fmt.Errorf("creating daily log file: %w", err)
-			}
+		if err := createDailyLogIfMissing(logFile, dateStr); err != nil {
+			return fmt.Errorf("creating daily log file: %w", err)
 		}
 
 		// Build bullet line
@@ -104,4 +101,25 @@ Examples:
 func init() {
 	noteCmd.Flags().StringVar(&noteVault, "vault", "", "Path to vault (auto-detected if omitted)")
 	noteCmd.Flags().StringVar(&noteTag, "tag", "", "Tag prefix to prepend to the note line (e.g. #admin/hiring)")
+}
+
+func createDailyLogIfMissing(logFile, dateStr string) error {
+	scaffold := fmt.Sprintf("---\ntags:\n  - daily-log\n---\n# %s\n\n", dateStr)
+	f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := f.WriteString(scaffold); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }

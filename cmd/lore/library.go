@@ -268,7 +268,6 @@ func init() {
 	libraryCmd.AddCommand(lintCmd)
 	libraryCmd.AddCommand(indexCmd)
 	libraryCmd.AddCommand(seedCmd)
-	libraryCmd.AddCommand(publishCmd)
 	libraryCmd.AddCommand(skillsCmd)
 	libraryCmd.AddCommand(reviewCmd)
 	libraryCmd.AddCommand(maintainCmd)

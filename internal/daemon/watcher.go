@@ -12,7 +12,7 @@ import (
 )
 
 // Watcher monitors vault and library paths for file changes,
-// debounces rapid events, and triggers incremental re-indexing.
+// debounces rapid events, and triggers full index rebuilds.
 type Watcher struct {
 	fw       *fsnotify.Watcher
 	state    *State
@@ -20,6 +20,8 @@ type Watcher struct {
 	mu       sync.Mutex
 	debounce time.Duration
 	stop     chan struct{}
+
+	rebuildIndex func() error
 }
 
 // NewWatcher creates a file watcher for the given state.
@@ -36,6 +38,7 @@ func NewWatcher(state *State) (*Watcher, error) {
 		debounce: 500 * time.Millisecond,
 		stop:     make(chan struct{}),
 	}
+	w.rebuildIndex = state.BuildIndex
 
 	// Add all directories under watched paths
 	dirs := 0
@@ -92,9 +95,7 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	// If a new directory was created, watch it
 	if event.Has(fsnotify.Create) {
 		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			if !strings.HasPrefix(info.Name(), ".") {
-				w.fw.Add(path)
-			}
+			w.handleCreatedDirectory(path)
 			return
 		}
 	}
@@ -117,6 +118,18 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	w.mu.Unlock()
 }
 
+func (w *Watcher) handleCreatedDirectory(path string) int {
+	if strings.HasPrefix(filepath.Base(path), ".") {
+		return 0
+	}
+	count, err := w.addRecursive(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "lore watcher: watch new directory %s: %v\n", path, err)
+		return 0
+	}
+	return count
+}
+
 // flush processes any paths whose last event is older than the debounce window.
 func (w *Watcher) flush() {
 	w.mu.Lock()
@@ -132,14 +145,9 @@ func (w *Watcher) flush() {
 	}
 	w.mu.Unlock()
 
-	for _, path := range ready {
-		// Check if file still exists
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			w.state.RemoveFile(path)
-		} else {
-			if err := w.state.IndexFile(path); err != nil {
-				fmt.Fprintf(os.Stderr, "lore watcher: reindex %s: %v\n", path, err)
-			}
+	if len(ready) > 0 {
+		if err := w.rebuildIndex(); err != nil {
+			fmt.Fprintf(os.Stderr, "lore watcher: rebuild index: %v\n", err)
 		}
 	}
 }
