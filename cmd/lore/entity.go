@@ -379,6 +379,7 @@ func runEntityGetJSON(entityPath, content, vaultPath string) error {
 // --------------------------------------------------------------------------
 
 var entityDeleteConfirm bool
+var entityDeleteForce bool
 var entityDeleteVault string
 
 var entityDeleteCmd = &cobra.Command{
@@ -386,11 +387,13 @@ var entityDeleteCmd = &cobra.Command{
 	Short: "Delete a Wiki entity page",
 	Long: `Deletes the markdown file for an entity page.
 
-Requires --confirm for safety. If the daemon is running, warns about
-files that reference (link to) this entity before deleting.
+Requires --confirm for safety. Warns about files that reference (link to)
+this entity before deleting. If the backlink index cannot be checked, deletion
+is rejected unless --force is also provided.
 
 Examples:
-  lore entity delete Wiki/Services/foo --confirm`,
+  lore entity delete Wiki/Services/foo --confirm
+  lore entity delete Wiki/Services/foo --confirm --force`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		entityPath := strings.TrimSuffix(args[0], ".md")
@@ -432,17 +435,8 @@ Examples:
 			return fmt.Errorf("entity not found: %s", filePath)
 		}
 
-		// Warn about incoming links via direct DB
-		db, dbErr := store.OpenForVault(store.DefaultPathForVault(vaultPath), vaultPath)
-		if dbErr == nil {
-			defer db.Close()
-			backlinks, blErr := db.Backlinks(entityPath, "")
-			if blErr == nil && len(backlinks) > 0 {
-				fmt.Fprintf(os.Stderr, "warning: %d page(s) link to %s:\n", len(backlinks), entityPath)
-				for _, r := range backlinks {
-					fmt.Fprintf(os.Stderr, "  - %s\n", r.RelPath)
-				}
-			}
+		if err := checkEntityDeleteBacklinks(vaultPath, entityPath, entityDeleteForce); err != nil {
+			return err
 		}
 
 		if err := os.Remove(filePath); err != nil {
@@ -452,6 +446,42 @@ Examples:
 		fmt.Printf("deleted: %s\n", filePath)
 		return nil
 	},
+}
+
+func checkEntityDeleteBacklinks(vaultPath, entityPath string, force bool) error {
+	dbPath := store.DefaultPathForVault(vaultPath)
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			return entityDeleteBacklinkCheckError(force, fmt.Errorf("index not found at %s", dbPath))
+		}
+		return entityDeleteBacklinkCheckError(force, fmt.Errorf("checking index: %w", err))
+	}
+
+	db, err := store.OpenForVault(dbPath, vaultPath)
+	if err != nil {
+		return entityDeleteBacklinkCheckError(force, fmt.Errorf("opening index: %w", err))
+	}
+	defer db.Close()
+
+	backlinks, err := db.Backlinks(entityPath, "")
+	if err != nil {
+		return entityDeleteBacklinkCheckError(force, fmt.Errorf("querying backlinks: %w", err))
+	}
+	if len(backlinks) > 0 {
+		fmt.Fprintf(os.Stderr, "warning: %d page(s) link to %s:\n", len(backlinks), entityPath)
+		for _, r := range backlinks {
+			fmt.Fprintf(os.Stderr, "  - %s\n", r.RelPath)
+		}
+	}
+	return nil
+}
+
+func entityDeleteBacklinkCheckError(force bool, err error) error {
+	if force {
+		fmt.Fprintf(os.Stderr, "warning: could not check backlinks before delete: %v\n", err)
+		return nil
+	}
+	return fmt.Errorf("could not check backlinks before delete: %w (run 'lore reindex' or pass --force to delete anyway)", err)
 }
 
 // --------------------------------------------------------------------------
@@ -680,6 +710,7 @@ func init() {
 
 	// entity delete flags
 	entityDeleteCmd.Flags().BoolVar(&entityDeleteConfirm, "confirm", false, "Confirm deletion (required)")
+	entityDeleteCmd.Flags().BoolVar(&entityDeleteForce, "force", false, "Delete even when backlinks cannot be checked")
 	entityDeleteCmd.Flags().StringVar(&entityDeleteVault, "vault", "", "Path to vault (auto-detected if omitted)")
 
 	// entity list flags
