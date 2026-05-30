@@ -32,7 +32,7 @@ func DefaultPath() string {
 // DefaultPathForVault returns the default DB location for a specific vault.
 func DefaultPathForVault(vaultPath string) string {
 	if p := os.Getenv("LORE_DB"); p != "" {
-		return p
+		return filepath.Join(p, "vaults", vaultID(vaultPath), "index.db")
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".local", "share", "lore", "vaults", vaultID(vaultPath), "index.db")

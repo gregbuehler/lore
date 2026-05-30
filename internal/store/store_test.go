@@ -132,6 +132,19 @@ func TestOpenForVaultRejectsMismatchedVault(t *testing.T) {
 	}
 }
 
+func TestDefaultPathForVaultUsesLoreDBAsBaseDirectory(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("LORE_DB", base)
+
+	got := DefaultPathForVault("/vault/one")
+	if !strings.HasPrefix(got, base+string(filepath.Separator)+"vaults"+string(filepath.Separator)) {
+		t.Fatalf("DefaultPathForVault = %q, want under %q/vaults", got, base)
+	}
+	if filepath.Base(got) != "index.db" {
+		t.Fatalf("DefaultPathForVault = %q, want index.db filename", got)
+	}
+}
+
 func execSQL(t *testing.T, db *sql.DB, query string, args ...any) {
 	t.Helper()
 	if _, err := db.Exec(query, args...); err != nil {

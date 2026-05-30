@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -34,10 +33,11 @@ func Start(vaultPath string, libraryPaths []string) error {
 	}
 
 	// Write PID file
-	if err := os.WriteFile(PidPath(), []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644); err != nil {
+	pidContent := pidFileContent(os.Getpid(), vaultPath)
+	if err := os.WriteFile(PidPath(), []byte(pidContent), 0o644); err != nil {
 		return fmt.Errorf("writing pid file: %w", err)
 	}
-	defer os.Remove(PidPath())
+	defer removeIfContentMatches(PidPath(), pidContent)
 
 	// Build state
 	state, err := NewState(vaultPath, libraryPaths)
@@ -62,7 +62,7 @@ func Start(vaultPath string, libraryPaths []string) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 	defer listener.Close()
-	defer os.Remove(SocketPath())
+	defer removeSocketIfSame(SocketPath(), listener)
 
 	d := &Daemon{state: state}
 
@@ -94,6 +94,29 @@ func Start(vaultPath string, libraryPaths []string) error {
 		}
 		go d.handleConn(conn)
 	}
+}
+
+func pidFileContent(pid int, vaultPath string) string {
+	return fmt.Sprintf("%d\n%s\n", pid, normalizeVaultPath(vaultPath))
+}
+
+func removeIfContentMatches(path, expected string) {
+	data, err := os.ReadFile(path)
+	if err == nil && string(data) == expected {
+		_ = os.Remove(path)
+	}
+}
+
+func removeSocketIfSame(path string, listener net.Listener) {
+	unixListener, ok := listener.(*net.UnixListener)
+	if !ok {
+		return
+	}
+	addr, ok := unixListener.Addr().(*net.UnixAddr)
+	if !ok || addr.Name != path {
+		return
+	}
+	_ = os.Remove(path)
 }
 
 func prepareSocketPath(path string) error {

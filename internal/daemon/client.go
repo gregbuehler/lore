@@ -102,7 +102,15 @@ func EnsureDaemon(vaultPath string) (*Client, error) {
 	for i := 0; i < 30; i++ {
 		time.Sleep(100 * time.Millisecond)
 		if c, err := Connect(); err == nil {
-			return c, nil
+			matches, matchErr := clientServesVault(c, vaultPath)
+			if matchErr == nil && matches {
+				return c, nil
+			}
+			c.Close()
+			if matchErr != nil {
+				return nil, fmt.Errorf("checking started daemon vault: %w", matchErr)
+			}
+			return nil, fmt.Errorf("started daemon is serving a different vault")
 		}
 	}
 	return nil, fmt.Errorf("daemon did not start within 3s")
