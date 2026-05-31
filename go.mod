@@ -1,4 +1,4 @@
-module github.com/gregbuehlerler/lore
+module github.com/gregbuehler/lore
 
 go 1.25.0
 
