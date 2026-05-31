@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gbuehler/lore/internal/config"
-	"github.com/gbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 

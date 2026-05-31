@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

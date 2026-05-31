@@ -573,7 +573,7 @@ func generateReadme(opts ScaffoldOptions) string {
 	}
 
 	b.WriteString(fmt.Sprintf("# %s Lore Vault\n\n", ownerLine))
-	b.WriteString("A personal knowledge vault managed by [lore](https://github.com/gbuehler/lore).\n\n")
+	b.WriteString("A personal knowledge vault managed by [lore](https://github.com/gregbuehler/lore).\n\n")
 	b.WriteString("## What is this?\n\n")
 	b.WriteString("This vault is a structured, markdown-based knowledge system designed to be\n")
 	b.WriteString("operated by both you and an LLM agent (Claude). It captures daily work,\n")

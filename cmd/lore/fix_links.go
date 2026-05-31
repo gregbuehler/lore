@@ -7,9 +7,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gbuehler/lore/internal/config"
-	"github.com/gbuehler/lore/internal/pathutil"
-	"github.com/gbuehler/lore/internal/resolve"
+	"github.com/gregbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/resolve"
 	"github.com/spf13/cobra"
 )
 

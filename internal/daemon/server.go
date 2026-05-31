@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gbuehler/lore/internal/pathutil"
-	"github.com/gbuehler/lore/internal/store"
+	"github.com/gregbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/store"
 )
 
 // Daemon is the long-running process that holds the index.

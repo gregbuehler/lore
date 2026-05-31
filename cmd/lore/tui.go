@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/gbuehler/lore/internal/config"
-	"github.com/gbuehler/lore/internal/tui"
+	"github.com/gregbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/tui"
 )
 
 var tuiCmd = &cobra.Command{

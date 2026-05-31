@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	entitypkg "github.com/gbuehler/lore/internal/entity"
-	"github.com/gbuehler/lore/internal/parse"
-	"github.com/gbuehler/lore/internal/pathutil"
+	entitypkg "github.com/gregbuehler/lore/internal/entity"
+	"github.com/gregbuehler/lore/internal/parse"
+	"github.com/gregbuehler/lore/internal/pathutil"
 )
 
 // dispatchEntityCreate creates a new entity page in the vault, then reindexes it.

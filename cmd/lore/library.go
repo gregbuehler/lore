@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/gbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 )
 

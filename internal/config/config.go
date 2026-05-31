@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/pathutil"
 	"gopkg.in/yaml.v3"
 )
 

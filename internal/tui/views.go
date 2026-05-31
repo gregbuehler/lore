@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/gbuehler/lore/internal/daemon"
+	"github.com/gregbuehler/lore/internal/daemon"
 )
 
 func (m Model) renderSearch(height int) string {

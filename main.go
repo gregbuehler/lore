@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/gbuehler/lore/cmd/lore"
+	"github.com/gregbuehler/lore/cmd/lore"
 )
 
 func main() {

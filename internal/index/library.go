@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/pathutil"
 )
 
 // PageEntry holds extracted metadata from a single markdown page.

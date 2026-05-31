@@ -11,7 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/gbuehler/lore/internal/daemon"
+	"github.com/gregbuehler/lore/internal/daemon"
 )
 
 type tab int

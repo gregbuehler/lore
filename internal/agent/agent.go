@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/config"
 )
 
 const (

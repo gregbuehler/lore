@@ -1,7 +1,7 @@
 package daemon
 
 import (
-	"github.com/gbuehler/lore/internal/resolve"
+	"github.com/gregbuehler/lore/internal/resolve"
 )
 
 // shortNameResolver wraps resolve.Resolver to preserve the private API

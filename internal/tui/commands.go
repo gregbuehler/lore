@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/gbuehler/lore/internal/daemon"
+	"github.com/gregbuehler/lore/internal/daemon"
 )
 
 // searchTickMsg fires after the debounce delay to trigger a search.

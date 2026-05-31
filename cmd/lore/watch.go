@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gbuehler/lore/internal/agent"
-	"github.com/gbuehler/lore/internal/config"
-	"github.com/gbuehler/lore/internal/index"
-	"github.com/gbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/agent"
+	"github.com/gregbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/index"
+	"github.com/gregbuehler/lore/internal/pathutil"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

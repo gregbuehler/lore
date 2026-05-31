@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gbuehler/lore/internal/store"
+	"github.com/gregbuehler/lore/internal/store"
 )
 
 func TestDispatchEntityListIncludesWikiDocumentsWithoutWikiText(t *testing.T) {

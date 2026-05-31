@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gbuehler/lore/internal/config"
-	"github.com/gbuehler/lore/internal/vault"
+	"github.com/gregbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/vault"
 	"github.com/spf13/cobra"
 )
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/config"
 )
 
 func TestBuildAgentLocalYAMLCodex(t *testing.T) {
