@@ -3,7 +3,7 @@ package lore
 import (
 	"strings"
 
-	"github.com/gbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/config"
 )
 
 func agentSynthesisDisabled(agentCfg config.AgentConfig) bool {

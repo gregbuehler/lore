@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/config"
 	"github.com/spf13/cobra"
 )
 

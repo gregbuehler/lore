@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gbuehler/lore/internal/config"
-	"github.com/gbuehler/lore/internal/daemon"
-	entitypkg "github.com/gbuehler/lore/internal/entity"
-	"github.com/gbuehler/lore/internal/parse"
-	"github.com/gbuehler/lore/internal/pathutil"
-	"github.com/gbuehler/lore/internal/store"
+	"github.com/gregbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/daemon"
+	entitypkg "github.com/gregbuehler/lore/internal/entity"
+	"github.com/gregbuehler/lore/internal/parse"
+	"github.com/gregbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/store"
 	"github.com/spf13/cobra"
 )
 

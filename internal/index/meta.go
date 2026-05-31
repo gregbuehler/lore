@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gbuehler/lore/internal/config"
-	gitpkg "github.com/gbuehler/lore/internal/git"
-	"github.com/gbuehler/lore/internal/pathutil"
+	"github.com/gregbuehler/lore/internal/config"
+	gitpkg "github.com/gregbuehler/lore/internal/git"
+	"github.com/gregbuehler/lore/internal/pathutil"
 )
 
 // BuildMetaIndex generates the meta-index.md from subscribed libraries.

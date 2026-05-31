@@ -4,7 +4,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/gbuehler/lore/internal/daemon"
+	"github.com/gregbuehler/lore/internal/daemon"
 )
 
 func main() {

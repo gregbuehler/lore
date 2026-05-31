@@ -6,9 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gbuehler/lore/internal/parse"
-	"github.com/gbuehler/lore/internal/resolve"
-	"github.com/gbuehler/lore/internal/store"
+	"github.com/gregbuehler/lore/internal/parse"
+	"github.com/gregbuehler/lore/internal/resolve"
+	"github.com/gregbuehler/lore/internal/store"
 )
 
 // State holds the daemon's index state. The SQLite store persists between

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gbuehler/lore/internal/store"
+	"github.com/gregbuehler/lore/internal/store"
 )
 
 func TestRebuildIndexForPathClearsOutgoingEdgesWhenWikilinksRemoved(t *testing.T) {

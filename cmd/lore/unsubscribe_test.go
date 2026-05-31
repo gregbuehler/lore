@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/config"
 )
 
 func TestRemoveSubscriptionFilesSkipsLocalSubscription(t *testing.T) {

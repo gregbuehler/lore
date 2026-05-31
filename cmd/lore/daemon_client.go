@@ -1,6 +1,6 @@
 package lore
 
-import "github.com/gbuehler/lore/internal/daemon"
+import "github.com/gregbuehler/lore/internal/daemon"
 
 func connectDaemonForCurrentVault() (*daemon.Client, error) {
 	vaultPath := resolveVaultPath()

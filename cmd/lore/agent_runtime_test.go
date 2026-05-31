@@ -3,7 +3,7 @@ package lore
 import (
 	"testing"
 
-	"github.com/gbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/config"
 )
 
 func TestAgentSynthesisDisabledByProviderNone(t *testing.T) {

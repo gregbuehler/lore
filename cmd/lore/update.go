@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gbuehler/lore/internal/config"
-	"github.com/gbuehler/lore/internal/git"
-	"github.com/gbuehler/lore/internal/index"
+	"github.com/gregbuehler/lore/internal/config"
+	"github.com/gregbuehler/lore/internal/git"
+	"github.com/gregbuehler/lore/internal/index"
 	"github.com/spf13/cobra"
 )
 

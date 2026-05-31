@@ -3,7 +3,7 @@ package daemon
 import (
 	"testing"
 
-	"github.com/gbuehler/lore/internal/resolve"
+	"github.com/gregbuehler/lore/internal/resolve"
 )
 
 // makeResolver builds a shortNameResolver directly from a pre-populated index

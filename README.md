@@ -9,13 +9,13 @@ A persistent daemon indexes your vault and libraries into SQLite (FTS5 for BM25-
 ## Install
 
 ```bash
-go install github.com/gbuehler/lore@latest
+go install github.com/gregbuehler/lore@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/gbuehler/lore.git
+git clone https://github.com/gregbuehler/lore.git
 cd lore
 go install ./...
 ```
