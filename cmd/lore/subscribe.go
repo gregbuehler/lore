@@ -14,6 +14,7 @@ import (
 
 var subscribeName string
 var subscribeLocal bool
+var subscribeRoot string
 
 var subscribeCmd = &cobra.Command{
 	Use:   "subscribe <repo-url | path>",
@@ -23,13 +24,15 @@ to the vault configuration. The library's content becomes available as
 local markdown files for your agent to read.
 
 The argument can be a full git URL, an org/repo shorthand that expands
-using the configured default_host, or a local path with --local.
+using the configured default_host, or a local path with --local. Use --root
+to subscribe to a subdirectory within the checkout, such as docs.
 
 An optional --name flag sets a local alias; if omitted, the alias is
 derived from the repo name or directory name.
 
 Examples:
   lore subscribe git@git.example.com:team/wiki-library.git
+  lore subscribe git@github.com:gregbuehler/citizen.git --root docs
   lore subscribe team/wiki-library                     # shorthand (requires default_host)
   lore subscribe team/wiki-library --name my-library
   lore subscribe ~/Documents/lore/services --local     # local directory`,
@@ -96,11 +99,29 @@ Examples:
 			fmt.Printf("Linking local library %s as %s...\n", dest, name)
 		}
 
+		root := strings.TrimSpace(subscribeRoot)
+		if root == "" {
+			root = "."
+		}
+		root = filepath.Clean(root)
+		contentPath := dest
+		if root != "." {
+			if filepath.IsAbs(root) {
+				return fmt.Errorf("--root must be relative to the subscription path")
+			}
+			contentPath = filepath.Join(dest, root)
+		}
+		info, err := os.Stat(contentPath)
+		if err != nil || !info.IsDir() {
+			return fmt.Errorf("subscription root %s does not exist or is not a directory", contentPath)
+		}
+
 		// Add to config
 		cfg.Subscriptions = append(cfg.Subscriptions, config.SubscriptionConfig{
 			Name:   name,
 			Repo:   repo,
 			Path:   dest,
+			Root:   root,
 			Access: "read-write",
 		})
 		if err := cfg.Save(vaultPath); err != nil {
@@ -142,4 +163,5 @@ func repoToName(repo string) string {
 func init() {
 	subscribeCmd.Flags().StringVar(&subscribeName, "name", "", "Local alias for the library (default: derived from repo/path)")
 	subscribeCmd.Flags().BoolVar(&subscribeLocal, "local", false, "Subscribe to a local directory instead of cloning a git repo")
+	subscribeCmd.Flags().StringVar(&subscribeRoot, "root", ".", "Root directory within the subscription to index")
 }

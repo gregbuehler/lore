@@ -138,7 +138,7 @@ Examples:
 			if publishAll {
 				change.stageableStatus = string(statusOut)
 			} else {
-				managedPaths, err := publishManagedPaths(sub.Path)
+				managedPaths, err := publishManagedPathsForRoot(sub.Path, sub.ContentRoot())
 				if err != nil {
 					results = append(results, publishResult{
 						name: sub.Name,
@@ -392,14 +392,30 @@ func publishStageArgs(stageAll bool, managedPaths []string) []string {
 }
 
 func publishManagedPaths(path string) ([]string, error) {
+	return publishManagedPathsForRoot(path, ".")
+}
+
+func publishManagedPathsForRoot(path, root string) ([]string, error) {
 	var paths []string
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = "."
+	}
+	root = filepath.Clean(root)
+	if filepath.IsAbs(root) {
+		return nil, fmt.Errorf("subscription root must be relative: %s", root)
+	}
 	for _, candidate := range publishManagedPathCandidates {
-		if _, err := os.Stat(filepath.Join(path, candidate)); err == nil {
-			paths = append(paths, candidate)
+		repoRel := candidate
+		if root != "." {
+			repoRel = filepath.ToSlash(filepath.Join(root, candidate))
+		}
+		if _, err := os.Stat(filepath.Join(path, repoRel)); err == nil {
+			paths = append(paths, repoRel)
 		} else if err != nil && !os.IsNotExist(err) {
 			return nil, err
-		} else if publishPathTracked(path, candidate) {
-			paths = append(paths, candidate)
+		} else if publishPathTracked(path, repoRel) {
+			paths = append(paths, repoRel)
 		}
 	}
 	return paths, nil

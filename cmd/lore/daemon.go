@@ -61,7 +61,7 @@ Use & to background it, or let 'lore query' auto-start it.`,
 
 		var libPaths []string
 		for _, sub := range cfg.Subscriptions {
-			libPaths = append(libPaths, sub.Path)
+			libPaths = append(libPaths, sub.ContentPath())
 		}
 
 		return daemon.Start(vaultPath, libPaths)

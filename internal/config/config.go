@@ -117,7 +117,31 @@ type SubscriptionConfig struct {
 	Name   string `yaml:"name"`
 	Repo   string `yaml:"repo"`
 	Path   string `yaml:"path"`
+	Root   string `yaml:"root,omitempty"`
 	Access string `yaml:"access"` // read-only, read-write
+}
+
+// ContentRoot returns the subscription's markdown root relative to Path.
+// Empty roots from older configs default to "." for backward compatibility.
+func (s SubscriptionConfig) ContentRoot() string {
+	root := strings.TrimSpace(s.Root)
+	if root == "" {
+		return "."
+	}
+	return filepath.Clean(root)
+}
+
+// ContentPath returns the absolute or checkout-relative directory that lore
+// should index and treat as the library root.
+func (s SubscriptionConfig) ContentPath() string {
+	root := s.ContentRoot()
+	if root == "." {
+		return s.Path
+	}
+	if filepath.IsAbs(root) {
+		return root
+	}
+	return filepath.Join(s.Path, root)
 }
 
 type AgentConfig struct {

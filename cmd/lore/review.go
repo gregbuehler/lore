@@ -42,9 +42,10 @@ Examples:
 		if sub == nil {
 			return fmt.Errorf("library %q not found in subscriptions", libraryName)
 		}
+		libPath := sub.ContentPath()
 
 		// Build entity index from library
-		entities := buildEntityIndex(sub.Path)
+		entities := buildEntityIndex(libPath)
 		if len(entities) == 0 {
 			fmt.Println("No entity pages found in library.")
 			return nil
@@ -66,9 +67,9 @@ Examples:
 
 		// Sort entities by number of findings (most first)
 		type entityFindings struct {
-			name     string
-			updated  string
-			items    []finding
+			name    string
+			updated string
+			items   []finding
 		}
 		var sorted []entityFindings
 		for name, items := range findings {

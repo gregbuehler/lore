@@ -87,3 +87,25 @@ func TestWriteConfigFileWritesYAMLData(t *testing.T) {
 		t.Fatalf("config content = %q", data)
 	}
 }
+
+func TestSubscriptionContentPathDefaultsToCheckoutPath(t *testing.T) {
+	sub := SubscriptionConfig{Path: "/repo/library"}
+
+	if got := sub.ContentRoot(); got != "." {
+		t.Fatalf("ContentRoot() = %q, want .", got)
+	}
+	if got := sub.ContentPath(); got != "/repo/library" {
+		t.Fatalf("ContentPath() = %q, want checkout path", got)
+	}
+}
+
+func TestSubscriptionContentPathUsesRelativeRoot(t *testing.T) {
+	sub := SubscriptionConfig{Path: "/repo/citizen", Root: "./docs"}
+
+	if got := sub.ContentRoot(); got != "docs" {
+		t.Fatalf("ContentRoot() = %q, want docs", got)
+	}
+	if got := sub.ContentPath(); got != "/repo/citizen/docs" {
+		t.Fatalf("ContentPath() = %q, want docs path", got)
+	}
+}
