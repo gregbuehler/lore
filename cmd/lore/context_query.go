@@ -190,7 +190,7 @@ func findPagePath(vaultPath string, cfg *config.Config, node string) (string, er
 
 	// Try subscribed libraries
 	for _, sub := range cfg.Subscriptions {
-		candidate, _, err = pathutil.ResolveMarkdownUnderRoot(sub.Path, node)
+		candidate, _, err = pathutil.ResolveMarkdownUnderRoot(sub.ContentPath(), node)
 		if err != nil {
 			return "", err
 		}

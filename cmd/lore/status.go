@@ -38,7 +38,8 @@ var statusCmd = &cobra.Command{
 
 		fmt.Println("Libraries:")
 		for _, sub := range cfg.Subscriptions {
-			pages := countMD(sub.Path)
+			contentPath := sub.ContentPath()
+			pages := countMD(contentPath)
 			age := "unknown"
 			warn := ""
 			isLocal := strings.HasPrefix(sub.Repo, "local:")
@@ -54,7 +55,7 @@ var statusCmd = &cobra.Command{
 					}
 				}
 			} else if isLocal {
-				if latest := latestModTime(sub.Path); !latest.IsZero() {
+				if latest := latestModTime(contentPath); !latest.IsZero() {
 					age = formatAge(time.Since(latest))
 				}
 				age += " (local)"
@@ -62,6 +63,10 @@ var statusCmd = &cobra.Command{
 
 			fmt.Printf("  %s: %d pages, updated %s%s\n", sub.Name, pages, age, warn)
 			fmt.Printf("    Path: %s\n", sub.Path)
+			if sub.ContentRoot() != "." {
+				fmt.Printf("    Root: %s\n", sub.ContentRoot())
+				fmt.Printf("    Content: %s\n", contentPath)
+			}
 
 			if isRepo {
 				remote := gitpkg.RemoteURL(sub.Path)

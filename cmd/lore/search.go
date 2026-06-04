@@ -34,7 +34,7 @@ queries, use 'lore query'.`,
 		// Collect search paths
 		paths := []string{cfg.Vault.Path}
 		for _, sub := range cfg.Subscriptions {
-			paths = append(paths, sub.Path)
+			paths = append(paths, sub.ContentPath())
 		}
 
 		// Prefer ripgrep, fall back to grep

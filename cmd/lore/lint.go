@@ -98,12 +98,14 @@ Examples:
 			if sub == nil {
 				return fmt.Errorf("library %q not found in subscriptions", name)
 			}
-			fmt.Printf("Linting library: %s (%s)\n", sub.Name, sub.Path)
-			issues += lintLibrary(sub.Path, cfg.EffectiveHost())
+			libPath := sub.ContentPath()
+			fmt.Printf("Linting library: %s (%s)\n", sub.Name, libPath)
+			issues += lintLibrary(libPath, cfg.EffectiveHost())
 		} else if lintAll {
 			for _, sub := range cfg.Subscriptions {
-				fmt.Printf("Linting library: %s (%s)\n", sub.Name, sub.Path)
-				issues += lintLibrary(sub.Path, cfg.EffectiveHost())
+				libPath := sub.ContentPath()
+				fmt.Printf("Linting library: %s (%s)\n", sub.Name, libPath)
+				issues += lintLibrary(libPath, cfg.EffectiveHost())
 				fmt.Println()
 			}
 		} else {

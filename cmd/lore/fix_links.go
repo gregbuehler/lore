@@ -52,7 +52,7 @@ Examples:
 		roots := []string{cfg.Vault.Path}
 		for _, sub := range cfg.Subscriptions {
 			if sub.Path != "" {
-				roots = append(roots, sub.Path)
+				roots = append(roots, sub.ContentPath())
 			}
 		}
 

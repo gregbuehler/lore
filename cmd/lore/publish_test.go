@@ -123,6 +123,34 @@ func TestPublishManagedPathsIncludesExistingLorePaths(t *testing.T) {
 	}
 }
 
+func TestPublishManagedPathsPrefixesSubscriptionRoot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "docs", "Wiki"), 0o755); err != nil {
+		t.Fatalf("mkdir docs/Wiki: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "library.yaml"), []byte("name: test\n"), 0o644); err != nil {
+		t.Fatalf("write docs/library.yaml: %v", err)
+	}
+
+	paths, err := publishManagedPathsForRoot(dir, "docs")
+	if err != nil {
+		t.Fatalf("publishManagedPathsForRoot() returned error: %v", err)
+	}
+
+	got := strings.Join(paths, "\x00")
+	for _, want := range []string{"docs/Wiki", "docs/library.yaml"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("publishManagedPathsForRoot() = %#v, want %q", paths, want)
+		}
+	}
+}
+
+func TestPublishManagedPathsRejectsAbsoluteRoot(t *testing.T) {
+	if _, err := publishManagedPathsForRoot(t.TempDir(), "/docs"); err == nil {
+		t.Fatal("publishManagedPathsForRoot() error = nil, want absolute root rejection")
+	}
+}
+
 func TestSplitPublishStatusSeparatesManagedAndUnmanagedPaths(t *testing.T) {
 	stageable, skipped := splitPublishStatus(" M Wiki/page.md\n?? scratch.txt\nR  old.md -> README.md\n", []string{"Wiki", "README.md"})
 

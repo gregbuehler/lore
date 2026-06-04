@@ -30,13 +30,18 @@ func BuildMetaIndex(cfg *config.Config) (string, error) {
 	} else {
 		b.WriteString("## Libraries\n\n")
 		for _, sub := range cfg.Subscriptions {
-			pages := countMarkdown(sub.Path)
+			contentPath := sub.ContentPath()
+			pages := countMarkdown(contentPath)
 			lastUpdate := "unknown"
 			if t, err := gitpkg.LastCommitTime(sub.Path); err == nil {
 				lastUpdate = t
 			}
 			b.WriteString(fmt.Sprintf("### %s\n\n", sub.Name))
 			b.WriteString(fmt.Sprintf("- Path: `%s`\n", sub.Path))
+			if sub.ContentRoot() != "." {
+				b.WriteString(fmt.Sprintf("- Root: `%s`\n", sub.ContentRoot()))
+				b.WriteString(fmt.Sprintf("- Content path: `%s`\n", contentPath))
+			}
 			b.WriteString(fmt.Sprintf("- Repo: `%s`\n", sub.Repo))
 			b.WriteString(fmt.Sprintf("- Access: %s\n", sub.Access))
 			b.WriteString(fmt.Sprintf("- Pages: %d\n", pages))

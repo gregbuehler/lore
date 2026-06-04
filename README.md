@@ -47,6 +47,13 @@ Or subscribe to a local directory:
 lore subscribe /path/to/library --local
 ```
 
+If the lore content lives inside a normal project repository, subscribe with
+an explicit root:
+
+```bash
+lore subscribe git@github.com:gregbuehler/citizen.git --root docs
+```
+
 ### 3. Start the daemon
 
 ```bash
@@ -94,7 +101,7 @@ lore library skills             # list available skills
 
 **Vaults** are personal. Your notes, daily logs, drafts, and context. A vault is a directory of markdown files with `.lore/config.yaml`. Your agent works here.
 
-**Libraries** are shared. Team knowledge bases that anyone can subscribe to. Each library is a git repo (or local directory) containing Wiki pages, skills, and a `library.yaml` schema. Subscribing clones it locally; your agent reads it as local markdown alongside your vault.
+**Libraries** are shared. Team knowledge bases that anyone can subscribe to. Each library is a git repo (or local directory) containing Wiki pages, skills, and a `library.yaml` schema. Subscribing clones it locally; your agent reads it as local markdown alongside your vault. By default the library root is the repository root; use `--root docs` when the lore content lives in a subdirectory of a larger project repo.
 
 **Skills** are procedural knowledge curated in libraries. They encode retrieval paths — not facts, but *how to find out*. When a library has a skill like `deployed-versions`, any agent with access to that library knows how to answer "what versions are deployed on staging?" without re-deriving the answer path.
 

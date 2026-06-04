@@ -85,7 +85,8 @@ func generateVaultContext(cfg *config.Config) string {
 	if len(cfg.Subscriptions) > 0 {
 		b.WriteString("## Subscribed Libraries\n\n")
 		for _, sub := range cfg.Subscriptions {
-			excerptPath := filepath.Join(sub.Path, "excerpt.md")
+			contentPath := sub.ContentPath()
+			excerptPath := filepath.Join(contentPath, "excerpt.md")
 			excerpt, err := os.ReadFile(excerptPath)
 			if err == nil {
 				content := string(excerpt)
@@ -108,11 +109,15 @@ func generateVaultContext(cfg *config.Config) string {
 				lines := strings.SplitN(content, "\n", 2)
 				b.WriteString(lines[0] + "\n\n")
 				b.WriteString(fmt.Sprintf("- **Path:** `%s`\n", sub.Path))
-				b.WriteString(fmt.Sprintf("- **Agent instructions:** `%s/CLAUDE.md`\n", sub.Path))
-				b.WriteString(fmt.Sprintf("- **Index:** `%s/Wiki/index.md`\n", sub.Path))
+				if sub.ContentRoot() != "." {
+					b.WriteString(fmt.Sprintf("- **Root:** `%s`\n", sub.ContentRoot()))
+					b.WriteString(fmt.Sprintf("- **Content path:** `%s`\n", contentPath))
+				}
+				b.WriteString(fmt.Sprintf("- **Agent instructions:** `%s/CLAUDE.md`\n", contentPath))
+				b.WriteString(fmt.Sprintf("- **Index:** `%s/Wiki/index.md`\n", contentPath))
 				if len(lines) > 1 {
 					// Resolve relative skill File: paths to absolute
-					rest := resolveSkillPaths(lines[1], sub.Path)
+					rest := resolveSkillPaths(lines[1], contentPath)
 					b.WriteString(rest)
 				}
 				b.WriteString("\n")
@@ -125,8 +130,12 @@ func generateVaultContext(cfg *config.Config) string {
 				// No excerpt — fall back to basic info
 				b.WriteString(fmt.Sprintf("### %s\n\n", sub.Name))
 				b.WriteString(fmt.Sprintf("- **Path:** `%s`\n", sub.Path))
+				if sub.ContentRoot() != "." {
+					b.WriteString(fmt.Sprintf("- **Root:** `%s`\n", sub.ContentRoot()))
+					b.WriteString(fmt.Sprintf("- **Content path:** `%s`\n", contentPath))
+				}
 				b.WriteString(fmt.Sprintf("- **Access:** %s\n", sub.Access))
-				b.WriteString(fmt.Sprintf("- **Agent instructions:** `%s/CLAUDE.md`\n\n", sub.Path))
+				b.WriteString(fmt.Sprintf("- **Agent instructions:** `%s/CLAUDE.md`\n\n", contentPath))
 			}
 		}
 

@@ -74,15 +74,16 @@ Examples:
 		if sub == nil {
 			return fmt.Errorf("library %q not found in subscriptions", libraryName)
 		}
+		libPath := sub.ContentPath()
 
 		// Load sources from library.yaml
-		sources := loadSources(sub.Path)
+		sources := loadSources(libPath)
 		if len(sources) == 0 {
-			return fmt.Errorf("no sources configured in %s/library.yaml", sub.Path)
+			return fmt.Errorf("no sources configured in %s/library.yaml", libPath)
 		}
 
 		// Build entity index
-		entities := buildEntityIndex(sub.Path)
+		entities := buildEntityIndex(libPath)
 		if len(entities) == 0 {
 			fmt.Println("No entity pages found in library.")
 			return nil
@@ -118,7 +119,7 @@ Examples:
 
 			for name, ent := range entities {
 				// Read inventory data for directory mapping
-				pagePath := findEntityPage(sub.Path, name)
+				pagePath := findEntityPage(libPath, name)
 				if pagePath == "" {
 					continue
 				}
@@ -166,7 +167,7 @@ Examples:
 			return len(work[i].changes) > len(work[j].changes)
 		})
 
-		toneRules := loadToneRules(sub.Path)
+		toneRules := loadToneRules(libPath)
 		agentCfg := agentConfigWithProvider(cfg.Agent, agentProviderOverride)
 		agentLabel := agent.Label(agentCfg)
 
@@ -177,13 +178,13 @@ Examples:
 			return nil
 		}
 
-		incomingDir := filepath.Join(sub.Path, "sources", "incoming")
+		incomingDir := filepath.Join(libPath, "sources", "incoming")
 		os.MkdirAll(incomingDir, 0755)
 
 		updated := 0
 		for _, ew := range work {
 			ent := entities[ew.name]
-			pagePath := findEntityPage(sub.Path, ew.name)
+			pagePath := findEntityPage(libPath, ew.name)
 			if pagePath == "" {
 				fmt.Printf("  skip %s: page not found\n", ew.name)
 				continue
@@ -222,7 +223,7 @@ Examples:
 				pkgPath, pagePath, time.Now().Format("2006-01-02"), pagePath,
 			)
 
-			if err := runAgent(agentCfg, sub.Path, prompt); err != nil {
+			if err := runAgent(agentCfg, libPath, prompt); err != nil {
 				fmt.Printf("    error: %v\n", err)
 				continue
 			}
@@ -235,7 +236,7 @@ Examples:
 		fmt.Printf("\nUpdated: %d/%d entities\n", updated, len(work))
 
 		if !watchDryRun && updated > 0 {
-			if err := index.BuildLibraryIndex(sub.Path); err != nil {
+			if err := index.BuildLibraryIndex(libPath); err != nil {
 				fmt.Printf("Warning: failed to rebuild library index: %v\n", err)
 			}
 			if _, err := index.BuildMetaIndex(cfg); err != nil {

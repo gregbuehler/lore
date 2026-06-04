@@ -43,13 +43,13 @@ Examples:
 			if sub == nil {
 				return fmt.Errorf("library %q not found in subscriptions", name)
 			}
-			if err := rebuildLibraryIndex(sub.Name, sub.Path); err != nil {
+			if err := rebuildLibraryIndex(sub.Name, sub.ContentPath()); err != nil {
 				return err
 			}
 		} else {
 			// Rebuild all libraries
 			for _, sub := range cfg.Subscriptions {
-				if err := rebuildLibraryIndex(sub.Name, sub.Path); err != nil {
+				if err := rebuildLibraryIndex(sub.Name, sub.ContentPath()); err != nil {
 					fmt.Printf("  warning: %s: %v\n", sub.Name, err)
 				}
 			}
@@ -191,7 +191,7 @@ func readSkillTrigger(path string) string {
 func rebuildIndexes(cfg *config.Config, libraryName string) {
 	sub := findSubscription(cfg, libraryName)
 	if sub != nil {
-		if err := index.BuildLibraryIndex(sub.Path); err != nil {
+		if err := index.BuildLibraryIndex(sub.ContentPath()); err != nil {
 			fmt.Printf("Warning: failed to rebuild library index: %v\n", err)
 		}
 	}

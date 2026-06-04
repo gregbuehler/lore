@@ -59,7 +59,7 @@ Examples:
 		var libPath string
 		for _, sub := range cfg.Subscriptions {
 			if sub.Name == libraryName {
-				libPath = sub.Path
+				libPath = sub.ContentPath()
 				break
 			}
 		}

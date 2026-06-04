@@ -49,12 +49,12 @@ Examples:
 			if sub == nil {
 				return fmt.Errorf("library %q not found in subscriptions", args[0])
 			}
-			return listLibrarySkills(sub.Name, sub.Path)
+			return listLibrarySkills(sub.Name, sub.ContentPath())
 		}
 
 		// List skills from all libraries
 		for _, sub := range cfg.Subscriptions {
-			if err := listLibrarySkills(sub.Name, sub.Path); err != nil {
+			if err := listLibrarySkills(sub.Name, sub.ContentPath()); err != nil {
 				fmt.Printf("  warning: %s: %v\n", sub.Name, err)
 			}
 		}
@@ -150,10 +150,11 @@ func showSkill(cfg *config.Config, libraryName, skillName string) error {
 		return fmt.Errorf("library %q not found in subscriptions", libraryName)
 	}
 
-	skills := loadSkillDefs(sub.Path)
+	libPath := sub.ContentPath()
+	skills := loadSkillDefs(libPath)
 	for _, s := range skills {
 		if s.Name == skillName {
-			skillPath := filepath.Join(sub.Path, s.File)
+			skillPath := filepath.Join(libPath, s.File)
 			data, err := os.ReadFile(skillPath)
 			if err != nil {
 				return fmt.Errorf("reading skill %s: %w", s.Name, err)
@@ -174,7 +175,8 @@ func buildSkillsReference(cfg *config.Config) string {
 	any := false
 
 	for _, sub := range cfg.Subscriptions {
-		skills := loadSkillDefs(sub.Path)
+		libPath := sub.ContentPath()
+		skills := loadSkillDefs(libPath)
 		if len(skills) == 0 {
 			continue
 		}
@@ -188,7 +190,7 @@ func buildSkillsReference(cfg *config.Config) string {
 
 		b.WriteString(fmt.Sprintf("### %s\n\n", sub.Name))
 		for _, s := range skills {
-			skillPath := filepath.Join(sub.Path, s.File)
+			skillPath := filepath.Join(libPath, s.File)
 			b.WriteString(fmt.Sprintf("- **%s** — %s\n", s.Name, s.Description))
 			b.WriteString(fmt.Sprintf("  `%s`\n", skillPath))
 		}

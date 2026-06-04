@@ -256,6 +256,7 @@ Flags:
 
 - `--local`: Subscribe to a local directory instead of cloning a git repo
 - `--name`: Local alias for the library (default: derived from repo/path)
+- `--root`: Root directory within the subscription to index
 
 ### `lore sync`
 
