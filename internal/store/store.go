@@ -44,13 +44,21 @@ func Open(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("creating db dir: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_synchronous=NORMAL")
+	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 
+	// SQLite is single-writer; serializing through one conn prevents internal contention
+	// from Go's connection pool opening multiple handles to the same in-process database.
+	db.SetMaxOpenConns(1)
+
 	s := &Store{db: db, path: dbPath}
 	if err := s.migrate(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := s.repairFTSIfNeeded(); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -152,6 +160,22 @@ func (s *Store) migrate() error {
 		if _, err := s.db.Exec(m); err != nil {
 			return fmt.Errorf("migration failed: %w\n  SQL: %s", err, m)
 		}
+	}
+	return nil
+}
+
+// repairFTSIfNeeded detects FTS5 corruption (SQLITE_CORRUPT_VTAB, error 267)
+// and rebuilds the virtual table from the content table.
+func (s *Store) repairFTSIfNeeded() error {
+	// Quick probe: run an FTS query that touches the index structure.
+	_, err := s.db.Exec("INSERT INTO documents_fts(documents_fts) VALUES('integrity-check')")
+	if err == nil {
+		return nil
+	}
+	// Any FTS error means we should rebuild.
+	_, rebuildErr := s.db.Exec("INSERT INTO documents_fts(documents_fts) VALUES('rebuild')")
+	if rebuildErr != nil {
+		return fmt.Errorf("FTS integrity-check failed (%v) and rebuild also failed: %w", err, rebuildErr)
 	}
 	return nil
 }
@@ -514,14 +538,25 @@ func (s *Store) Stats() (docs, edges int, err error) {
 }
 
 // Clear removes all data from the store (for full rebuild).
+// It rebuilds the FTS index from scratch to prevent content/FTS divergence.
 func (s *Store) Clear() error {
-	if _, err := s.db.Exec("DELETE FROM edges"); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
 		return err
 	}
-	if _, err := s.db.Exec("DELETE FROM documents"); err != nil {
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM edges"); err != nil {
 		return err
 	}
-	return nil
+	if _, err := tx.Exec("DELETE FROM documents"); err != nil {
+		return err
+	}
+	// Rebuild FTS to guarantee sync with the now-empty content table.
+	if _, err := tx.Exec("INSERT INTO documents_fts(documents_fts) VALUES('rebuild')"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // HealthIssue represents a problem found in the vault.
