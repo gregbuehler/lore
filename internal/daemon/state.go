@@ -60,6 +60,16 @@ func (s *State) buildIndexLocked() error {
 			return err
 		}
 	}
+
+	// Content rows alone are not enough: FTS5 can hold every row and still fail
+	// the ranked traversal that `ORDER BY rank` uses. Finish a full build with an
+	// FTS-level rebuild so `lore reindex` genuinely repairs a damaged index.
+	if err := s.Store.RebuildFTS(); err != nil {
+		return err
+	}
+	if err := s.Store.VerifyFTS(); err != nil {
+		return err
+	}
 	return nil
 }
 

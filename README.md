@@ -138,6 +138,37 @@ The lore daemon is a lightweight background process that provides fast search an
 
 The daemon auto-starts on first query when `LORE_VAULT` is set. All CLI commands fall back to direct SQLite access if the daemon is unavailable.
 
+### Index Health
+
+FTS5 damage is not all-or-nothing, and the obvious checks lie. An index can hold
+every row, answer plain `MATCH`, `bm25()` and `snippet()` correctly, and pass
+FTS5's own `integrity-check`, while the ranked traversal behind `ORDER BY rank`
+— which every `lore query` uses — still fails with
+`database disk image is malformed (267)`. Repopulating the documents table (a
+reindex) does not necessarily clear the damaged segment; only an FTS5-level
+rebuild does.
+
+lore guards this in four places:
+
+- **On open**: `VerifyFTS` runs `integrity-check` *and* a ranked probe against
+  tokens taken from indexed titles. A failure triggers an automatic rebuild.
+  A damaged FTS index warns instead of failing — graph and entity commands do
+  not need FTS.
+- **On query**: `Search` retries once after rebuilding when a query hits
+  corruption mid-session, instead of surfacing "error 267".
+- **On reindex**: full index builds finish with an FTS rebuild and verification,
+  so `lore daemon reindex` genuinely repairs rather than repopulating around the
+  damage.
+- **On demand**: `lore doctor` verifies, `lore doctor --repair` rebuilds.
+
+```bash
+lore doctor            # verify integrity-check + ranked probe
+lore doctor --repair   # rebuild the FTS index if verification fails
+```
+
+The index is a derived cache — deleting `~/.local/share/lore/vaults/*/index.db`
+and restarting the daemon always rebuilds it from the markdown files.
+
 ## Library Anatomy
 
 ```

@@ -1,13 +1,29 @@
 package daemon
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/gregbuehler/lore/internal/store"
+	_ "modernc.org/sqlite"
 )
+
+// damageFTS garbles the FTS5 segment records through a second connection,
+// reproducing the SQLITE_CORRUPT_VTAB (267) state that leaves the documents
+// table intact while ranked queries fail.
+func damageFTS(t *testing.T, dbPath string) error {
+	t.Helper()
+	raw, err := sql.Open("sqlite", dbPath+"?_busy_timeout=5000")
+	if err != nil {
+		return err
+	}
+	defer raw.Close()
+	_, err = raw.Exec(`UPDATE documents_fts_data SET block = randomblob(64) WHERE id > 1`)
+	return err
+}
 
 func TestRebuildIndexForPathClearsOutgoingEdgesWhenWikilinksRemoved(t *testing.T) {
 	vault := t.TempDir()
@@ -137,5 +153,55 @@ func TestRootForRequiresPathBoundary(t *testing.T) {
 
 	if got := state.rootFor(root + "-other/Wiki/Page.md"); got != "" {
 		t.Fatalf("rootFor sibling prefix path = %q, want empty", got)
+	}
+}
+
+// A reindex must repair a damaged FTS index, not just repopulate documents.
+// Content rows alone are not enough: FTS5 can hold every row and still fail the
+// ranked traversal that 'lore query' uses, which is why buildIndexLocked ends
+// with an FTS-level rebuild.
+func TestBuildIndexRepairsDamagedFTSIndex(t *testing.T) {
+	vault := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+
+	db, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close store: %v", err)
+		}
+	})
+
+	state := &State{Store: db, VaultPath: vault, Paths: []string{vault}}
+
+	notePath := filepath.Join(vault, "Gateway.md")
+	if err := os.WriteFile(notePath, []byte("# Gateway\n\nneedle cert rotation\n"), 0o644); err != nil {
+		t.Fatalf("write note: %v", err)
+	}
+	if err := state.BuildIndex(); err != nil {
+		t.Fatalf("initial BuildIndex: %v", err)
+	}
+	if results, err := db.Search("needle", 10); err != nil || len(results) != 1 {
+		t.Fatalf("Search() after build = (%d results, %v), want 1 result", len(results), err)
+	}
+
+	if err := damageFTS(t, dbPath); err != nil {
+		t.Fatalf("damage FTS: %v", err)
+	}
+
+	if err := state.BuildIndex(); err != nil {
+		t.Fatalf("BuildIndex after damage: %v", err)
+	}
+	if err := db.VerifyFTS(); err != nil {
+		t.Fatalf("VerifyFTS() after reindex = %v, want nil", err)
+	}
+	results, err := db.Search("needle", 10)
+	if err != nil {
+		t.Fatalf("Search() after reindex error = %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("Search() after reindex = %d results, want 1", len(results))
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,8 +39,19 @@ func DefaultPathForVault(vaultPath string) string {
 	return filepath.Join(home, ".local", "share", "lore", "vaults", vaultID(vaultPath), "index.db")
 }
 
-// Open opens (or creates) the SQLite store at the given path.
+// Open opens (or creates) the SQLite store at the given path, repairing a
+// damaged FTS index if it finds one.
 func Open(dbPath string) (*Store, error) {
+	return open(dbPath, true)
+}
+
+// OpenNoRepair opens the store without touching the FTS index, so diagnostics
+// can report the index's true state instead of silently healing it.
+func OpenNoRepair(dbPath string) (*Store, error) {
+	return open(dbPath, false)
+}
+
+func open(dbPath string, repairFTS bool) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, fmt.Errorf("creating db dir: %w", err)
 	}
@@ -58,9 +70,17 @@ func Open(dbPath string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	if err := s.repairFTSIfNeeded(); err != nil {
-		db.Close()
-		return nil, err
+	if !repairFTS {
+		return s, nil
+	}
+	// A damaged FTS index must not make the whole store unusable: graph queries,
+	// backlinks and entity CRUD do not touch FTS. Repair on a best-effort basis
+	// and warn; Search self-heals again if it still hits corruption.
+	repaired, repairErr := s.RepairFTSIfNeeded()
+	if repairErr != nil {
+		log.Printf("lore: %v (try 'lore doctor --repair', or delete %s to rebuild from files)", repairErr, dbPath)
+	} else if repaired {
+		log.Printf("lore: FTS index in %s was unhealthy; rebuilt", dbPath)
 	}
 	return s, nil
 }
@@ -160,22 +180,6 @@ func (s *Store) migrate() error {
 		if _, err := s.db.Exec(m); err != nil {
 			return fmt.Errorf("migration failed: %w\n  SQL: %s", err, m)
 		}
-	}
-	return nil
-}
-
-// repairFTSIfNeeded detects FTS5 corruption (SQLITE_CORRUPT_VTAB, error 267)
-// and rebuilds the virtual table from the content table.
-func (s *Store) repairFTSIfNeeded() error {
-	// Quick probe: run an FTS query that touches the index structure.
-	_, err := s.db.Exec("INSERT INTO documents_fts(documents_fts) VALUES('integrity-check')")
-	if err == nil {
-		return nil
-	}
-	// Any FTS error means we should rebuild.
-	_, rebuildErr := s.db.Exec("INSERT INTO documents_fts(documents_fts) VALUES('rebuild')")
-	if rebuildErr != nil {
-		return fmt.Errorf("FTS integrity-check failed (%v) and rebuild also failed: %w", err, rebuildErr)
 	}
 	return nil
 }
@@ -318,7 +322,22 @@ type SearchResult struct {
 }
 
 // Search performs a BM25-ranked full-text search.
+//
+// The `ORDER BY rank` traversal is the part of FTS5 most likely to hit a damaged
+// segment, so a corruption error triggers one FTS rebuild and a single retry
+// rather than surfacing "error 267" to the caller.
 func (s *Store) Search(query string, limit int) ([]SearchResult, error) {
+	results, err := s.search(query, limit)
+	if err == nil || !isFTSCorruption(err) {
+		return results, err
+	}
+	if healErr := s.selfHealFTS(err); healErr != nil {
+		return nil, healErr
+	}
+	return s.search(query, limit)
+}
+
+func (s *Store) search(query string, limit int) ([]SearchResult, error) {
 	if limit <= 0 {
 		limit = 10
 	}

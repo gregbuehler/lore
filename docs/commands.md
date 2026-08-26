@@ -80,6 +80,14 @@ Flags:
 
 - `--help`, `-h`: help for commands
 
+### `lore doctor`
+
+Check the search index for damage
+
+Flags:
+
+- `--repair`: Rebuild the FTS index if verification fails
+
 ### `lore entity`
 
 CRUD commands for Wiki entity pages
@@ -328,4 +336,3 @@ Flags:
 ### `lore vault status`
 
 Show vault and library status
-
