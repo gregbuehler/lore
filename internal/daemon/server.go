@@ -32,6 +32,15 @@ func Start(vaultPath string, libraryPaths []string) error {
 		return err
 	}
 
+	// Take the index lock before any indexing: the socket only exists after the
+	// initial build, so it cannot keep a second daemon out of the same SQLite
+	// index during that window.
+	lock, err := acquireIndexLock(vaultPath)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+
 	// Write PID file
 	pidContent := pidFileContent(os.Getpid(), vaultPath)
 	if err := pathutil.AtomicWriteFile(PidPath(), []byte(pidContent), 0o644); err != nil {
