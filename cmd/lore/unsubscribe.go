@@ -86,8 +86,15 @@ func removeSubscriptionFiles(sub config.SubscriptionConfig, managedDir string) (
 	if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
 		checkPath = resolved
 	}
+	// Resolve the managed dir too: a symlinked ancestor (e.g. macOS /var ->
+	// /private/var) otherwise makes every subscription look like it lives
+	// outside the managed directory.
+	checkManaged := absManaged
+	if resolved, err := filepath.EvalSymlinks(absManaged); err == nil {
+		checkManaged = resolved
+	}
 
-	rel, err := filepath.Rel(absManaged, checkPath)
+	rel, err := filepath.Rel(checkManaged, checkPath)
 	if err != nil {
 		return "", fmt.Errorf("checking subscription path: %w", err)
 	}
