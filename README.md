@@ -140,6 +140,12 @@ The daemon auto-starts on first query when `LORE_VAULT` is set. All CLI commands
 
 ### Index Health
 
+A note on concurrency first: only one daemon may write a vault's index. The
+daemon takes an exclusive `flock` on `<index>.lock` before it starts indexing,
+because the socket — the other thing that keeps duplicates out — is only bound
+*after* the initial build. Two daemons writing one SQLite index is the fastest
+way to damage the FTS5 index.
+
 FTS5 damage is not all-or-nothing, and the obvious checks lie. An index can hold
 every row, answer plain `MATCH`, `bm25()` and `snippet()` correctly, and pass
 FTS5's own `integrity-check`, while the ranked traversal behind `ORDER BY rank`
@@ -168,6 +174,27 @@ lore doctor --repair   # rebuild the FTS index if verification fails
 
 The index is a derived cache — deleting `~/.local/share/lore/vaults/*/index.db`
 and restarting the daemon always rebuilds it from the markdown files.
+
+### macOS: vaults in ~/Documents
+
+macOS gates `~/Documents`, `~/Desktop` and `~/Downloads` behind privacy consent
+(TCC). A LaunchAgent has no such consent, and an ungranted `open()` inside those
+directories **blocks in the kernel** rather than failing — so a daemon installed
+with `lore daemon install` hangs before it logs anything, and `KeepAlive`
+respawns more hung copies. A daemon started from a terminal works, because it
+inherits the terminal's grant; that difference invites hand-started duplicates,
+which is how indexes get corrupted.
+
+If your vault lives in one of those directories, grant the binary access:
+
+```text
+System Settings → Privacy & Security → Full Disk Access → +
+/path/to/lore
+```
+
+Then reload the agent and confirm with `lore daemon status`. Re-granting may be
+needed after upgrading the binary. Keeping the vault outside those directories
+avoids the grant entirely.
 
 ## Library Anatomy
 

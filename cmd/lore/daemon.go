@@ -273,7 +273,41 @@ func installDarwin(vaultPath, binPath string) error {
 		fmt.Println(msg)
 	}
 	fmt.Printf("LaunchAgent %s loaded — daemon will start now and at login.\n", plistLabel)
+	warnIfTCCProtected(vaultPath, binPath)
 	return nil
+}
+
+// tccProtectedDirs are the user directories macOS gates behind privacy consent.
+// A LaunchAgent has no consent for them: opening a file inside one does not
+// fail, it blocks in the kernel forever, so the daemon hangs before it logs
+// anything and KeepAlive respawns more hung copies.
+var tccProtectedDirs = []string{"Documents", "Desktop", "Downloads"}
+
+func warnIfTCCProtected(vaultPath, binPath string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	for _, dir := range tccProtectedDirs {
+		protected := filepath.Join(home, dir)
+		rel, err := filepath.Rel(protected, vaultPath)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			continue
+		}
+		fmt.Printf(`
+Warning: the vault lives in ~/%s, which macOS protects with privacy consent.
+A LaunchAgent has no such consent, so the daemon will hang on startup (stuck in
+open(), no log output) until you grant it access:
+
+  System Settings → Privacy & Security → Full Disk Access → +
+  %s
+
+Then: launchctl unload %s.plist && launchctl load %s.plist
+Check it worked with 'lore daemon status'. Moving the vault outside ~/%s avoids
+the grant entirely.
+`, dir, binPath, plistLabel, plistLabel, dir)
+		return
+	}
 }
 
 func uninstallDarwin() error {
