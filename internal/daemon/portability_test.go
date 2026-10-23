@@ -3,7 +3,11 @@ package daemon
 import (
 	"archive/zip"
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -13,7 +17,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 type portableTestEntry struct {
@@ -85,6 +91,124 @@ func portableTree(t *testing.T, root string) map[string]string {
 		t.Fatal(err)
 	}
 	return out
+}
+
+func TestPortableAssetManifestCanonicalFiles(t *testing.T) {
+	// Exercise the authenticated handler as well as the portable route helper.
+	d, vault, library := documentTestDaemon(t)
+	handler := d.handleHTTP("manifest-token")
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/v1/assets?source=vault", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated manifest = %d", unauthorized.Code)
+	}
+	if err := syscall.Mkfifo(filepath.Join(vault, "special.pipe"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{
+		"z.bin":               []byte{0, 255, 1},
+		"Attachments/a.png":   []byte("binary\x00image"),
+		"Attachments/empty":   {},
+		"note.md":             []byte("# Note"),
+		"upper.MD":            []byte("# Note"),
+		".hidden/secret.bin":  []byte("secret"),
+		"Attachments/.secret": []byte("secret"),
+	}
+	for name, content := range files {
+		filename := filepath.Join(vault, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filename, content, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(library, "other.bin"), []byte("other"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range map[string]string{"linked": library, "linked.bin": filepath.Join(vault, "z.bin")} {
+		if err := os.Symlink(target, filepath.Join(vault, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readManifest := func(source string) []portableAssetSummary {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/assets?source="+url.QueryEscape(source), nil)
+		request.Header.Set("Authorization", "Bearer manifest-token")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("manifest = %d: %s", response.Code, response.Body)
+		}
+		var result struct {
+			Assets []portableAssetSummary `json:"assets"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result.Assets
+	}
+	assets := readManifest("vault")
+	wantPaths := []string{"Attachments/a.png", "Attachments/empty", "z.bin"}
+	if len(assets) != len(wantPaths) {
+		t.Fatalf("manifest = %+v", assets)
+	}
+	for i, asset := range assets {
+		if asset.Path != wantPaths[i] {
+			t.Fatalf("unsorted or unsafe manifest: %+v", assets)
+		}
+		content := files[asset.Path]
+		info, err := os.Stat(filepath.Join(vault, filepath.FromSlash(asset.Path)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if asset.Revision != fmt.Sprintf("%x", sha256.Sum256(content)) || asset.Size != int64(len(content)) || asset.ModifiedAt != info.ModTime().UTC().Format(time.RFC3339Nano) {
+			t.Fatalf("incorrect metadata: %+v", asset)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(vault, "z.bin"), []byte{0, 255, 2}, 0644); err != nil {
+		t.Fatal(err)
+	}
+	changed := readManifest("vault")
+	if changed[2].Revision == assets[2].Revision || changed[2].Size != assets[2].Size {
+		t.Fatal("same-sized binary change did not change revision")
+	}
+	scoped := readManifest("library:notes")
+	if len(scoped) != 1 || scoped[0].Path != "other.bin" {
+		t.Fatalf("source boundary violated: %+v", scoped)
+	}
+	if response := portableTestRequest(d, http.MethodPost, "/api/v1/assets?source=vault", nil); response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("manifest mutation = %d", response.Code)
+	}
+	if response := portableTestRequest(d, http.MethodGet, "/api/v1/assets?source=missing", nil); response.Code != http.StatusNotFound {
+		t.Fatalf("unknown source = %d", response.Code)
+	}
+}
+
+func TestPortableAssetManifestErrorsAndCancellation(t *testing.T) {
+	root := t.TempDir()
+	assets, err := portableAssetManifest(context.Background(), root)
+	if err != nil || assets == nil || len(assets) != 0 {
+		t.Fatalf("empty manifest = %+v, %v", assets, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := portableAssetManifest(ctx, root); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation = %v", err)
+	}
+	if err := os.Remove(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := portableAssetManifest(context.Background(), root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing root reported as complete manifest: %v", err)
+	}
+	d, vault, _ := documentTestDaemon(t)
+	if err := os.RemoveAll(vault); err != nil {
+		t.Fatal(err)
+	}
+	if response := portableTestRequest(d, http.MethodGet, "/api/v1/assets?source=vault", nil); response.Code != http.StatusInternalServerError {
+		t.Fatalf("unreadable manifest = %d: %s", response.Code, response.Body)
+	}
 }
 
 func TestPortableImportPreflightsUnsafeArchiveWithoutMutation(t *testing.T) {

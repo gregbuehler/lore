@@ -116,14 +116,15 @@ retain their configured `read-only` or `read-write` permissions.
 | `POST /api/v1/sources` | `{name}` → `{source}`; persists a local read-write Lore subscription |
 | `GET /api/v1/documents?source=ID&q=text&cursor=CURSOR` | `{documents,hasMore,nextCursor}`; follow all pages; query uses the existing source-scoped FTS index |
 | `GET /api/v1/document?source=ID&path=note.md` | `{document}`; `id=DOCUMENT_ID` may replace `path` |
-| `PUT /api/v1/document` | `{source,path,content,baseRevision}` → `{document}` |
-| `DELETE /api/v1/document?source=ID&path=note.md&baseRevision=REV` | `{ok:true}` |
-| `POST /api/v1/document/move` | `{source,path,newPath,baseRevision}` → `{document}` |
+| `PUT /api/v1/document` | `{source,path,content,baseRevision,documentID?,operationID?}` → `{document}` |
+| `DELETE /api/v1/document?source=ID&path=note.md&baseRevision=REV` | `{ok:true}`; optional `id=DOCUMENT_ID` asserts identity |
+| `POST /api/v1/document/move` | `{source,path,newPath,baseRevision,documentID?}` → `{document}` |
 | `GET /api/v1/folders?source=ID` | `{folders:[{path}]}`, including empty nested folders |
 | `POST /api/v1/folders` | `{source,path}` → `{path}`; creates nested directories |
 | `GET /api/v1/resolve?source=ID&from=note.md&target=TARGET` | `{resolved,document_id?,source_id?,rel_path?,title?}` |
 | `GET /api/v1/backlinks?source=ID&path=note.md` | `{documents:[document summary]}`; same-library references only |
 | `GET /api/v1/asset?source=ID&path=images/photo.png` | Attachment bytes with safe type/disposition headers |
+| `GET /api/v1/assets?source=ID` | `{assets:[{path,revision,size,modified_at}]}`; sorted canonical portable attachment manifest |
 | `POST /api/v1/asset?source=ID&path=images/photo.png` | Binary upload; existing paths are never replaced |
 | `GET /api/v1/export?source=ID&path=optional/folder` | ZIP preserving relative Markdown, attachments and empty folders |
 | `POST /api/v1/import?source=ID&folder=optional/folder` | ZIP bytes → `{imported:number}`; preflight rejects collisions rather than replacing files |
@@ -139,11 +140,46 @@ without editing fenced/inline code. External editors remain supported through
 the filesystem watcher; they should not concurrently rename/write files while
 a multi-file move is being applied.
 
+For synchronization, supply the optional `documentID` on updates/moves and `id`
+on deletion. Identity and content revision are checked together under the writer
+lock, so a replacement at a reused path is protected even when its bytes match.
+Existing clients that omit the new identity precondition remain compatible.
+
+Creation accepts an optional UUID `operationID`. Persist the UUID before sending,
+then replay the exact original path and content after an uncertain response.
+The identity sidecar atomically reserves a receipt and canonical identity before
+publishing the Markdown file. A replay returns that identity's current document,
+including later edits and moves; it never recreates the old path. Reusing the
+UUID with a different path/content returns 409. If the accepted document was
+deleted, replay returns 410 `creation_gone`, preserving the caller's opportunity
+to recover its local draft explicitly. Receipts are source-scoped, survive
+document deletion, and store only the creation content hash. Interrupted
+reserved creates can resume after a daemon restart.
+
+Keep receipts with the canonical identity backup. An older daemon that drops
+receipt fields is not a safe storage-server rollback after offline writes;
+restore a compatible coordinated backup. Historical HTTP/socket clients still
+work with the new daemon.
+
 Wiki-link filename paths are percent-encoded independently of heading and alias
 suffixes and decoded once during resolution. For example, a file named
 `new#draft.md` is linked as `[[new%23draft]]`, not `[[new#draft]]`. Rename/move
 preserves this distinction, including links inside ordinary list containers;
 fenced and inline code examples remain literal.
+
+Offline clients use the additive, read-only `assets` endpoint to discover all
+existing attachments in a selected source, including unreferenced files, without
+unpacking an export ZIP or maintaining another backend cache/index. Each entry
+has a source-relative `path`, lowercase SHA-256 `revision` of the file bytes,
+byte `size`, and RFC3339Nano `modified_at`. Results are sorted by path and include
+only regular portable files other than `.md` (case-insensitive); hidden paths,
+symlinks and special files are excluded. Empty manifests return `{"assets":[]}`.
+Hashing streams canonical bytes with a fixed buffer and honors cancellation;
+read errors or detected concurrent file changes fail the entire enumeration,
+not a partial-success response. Clients download changed entries using `asset`,
+verify the revision before declaring offline availability, and retry failed
+passes without treating failures as deletions. Existing upload, download,
+import and export contracts remain unchanged.
 
 ### Stable document identity and migration
 

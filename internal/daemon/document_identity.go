@@ -18,8 +18,10 @@ import (
 // This is canonical metadata, deliberately outside the disposable search index.
 // Frontmatter belongs to the author and is never modified to establish identity.
 type documentIdentity struct {
-	ID        string `json:"document_id"`
-	CreatedAt string `json:"created_at"`
+	ID          string          `json:"document_id"`
+	CreatedAt   string          `json:"created_at"`
+	OperationID string          `json:"operation_id,omitempty"`
+	Create      *documentCreate `json:"create,omitempty"`
 }
 
 func identityKey(sourceID, rel string) string { return sourceID + "\n" + rel }

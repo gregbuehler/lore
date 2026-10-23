@@ -66,18 +66,19 @@ func (d *Daemon) routeKnowledgeHTTP(w http.ResponseWriter, r *http.Request) bool
 				Path         string `json:"path"`
 				NewPath      string `json:"newPath"`
 				BaseRevision string `json:"baseRevision"`
+				DocumentID   string `json:"documentID,omitempty"`
 			}
 			if !decodeKnowledgeBody(w, r, &body) {
 				return true
 			}
-			req = &Request{Type: "document_move", SourceID: body.Source, RelPath: body.Path, NewPath: body.NewPath, BaseRevision: body.BaseRevision}
+			req = &Request{Type: "document_move", SourceID: body.Source, RelPath: body.Path, NewPath: body.NewPath, BaseRevision: body.BaseRevision, DocumentID: body.DocumentID}
 			result = func(resp *Response) any { return httpDocumentResponse{Document: resp.Document} }
 		}
 	case "/api/v1/document":
 		if r.Method != http.MethodDelete {
 			return false
 		}
-		req = &Request{Type: "document_delete", SourceID: r.URL.Query().Get("source"), RelPath: r.URL.Query().Get("path"), BaseRevision: r.URL.Query().Get("baseRevision")}
+		req = &Request{Type: "document_delete", SourceID: r.URL.Query().Get("source"), RelPath: r.URL.Query().Get("path"), BaseRevision: r.URL.Query().Get("baseRevision"), DocumentID: r.URL.Query().Get("id")}
 		result = func(resp *Response) any { return map[string]bool{"ok": true} }
 	case "/api/v1/backlinks":
 		if r.Method == http.MethodGet {

@@ -3,6 +3,8 @@ package daemon
 import (
 	"archive/zip"
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +14,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 )
 
 const (
@@ -139,6 +143,9 @@ func (d *Daemon) dispatchFolderCreate(req *Request) *Response {
 	if err != nil {
 		return pathError(err)
 	}
+	if response := d.checkCreationReservation(source.SourceID, req.RelPath, ""); response != nil {
+		return response
+	}
 	// The sentinel is never written; the shared parent helper includes the final
 	// requested directory and rejects any preexisting non-directory component.
 	if err := ensureDocumentParents(source.root, filepath.Join(filename, "folder")); err != nil {
@@ -148,7 +155,7 @@ func (d *Daemon) dispatchFolderCreate(req *Request) *Response {
 }
 
 func (d *Daemon) routePortableHTTP(w http.ResponseWriter, r *http.Request) bool {
-	if r.URL.Path != "/api/v1/asset" && r.URL.Path != "/api/v1/export" && r.URL.Path != "/api/v1/import" {
+	if r.URL.Path != "/api/v1/asset" && r.URL.Path != "/api/v1/assets" && r.URL.Path != "/api/v1/export" && r.URL.Path != "/api/v1/import" {
 		return false
 	}
 	d.state.apiMu.Lock()
@@ -177,12 +184,131 @@ func (d *Daemon) routePortableHTTP(w http.ResponseWriter, r *http.Request) bool 
 	switch r.URL.Path {
 	case "/api/v1/asset":
 		d.portableAsset(w, r, source)
+	case "/api/v1/assets":
+		d.portableAssets(w, r, source)
 	case "/api/v1/export":
 		d.portableExport(w, r, source)
 	case "/api/v1/import":
 		d.portableImport(w, r, source)
 	}
 	return true
+}
+
+type portableAssetSummary struct {
+	Path       string `json:"path"`
+	Revision   string `json:"revision"`
+	Size       int64  `json:"size"`
+	ModifiedAt string `json:"modified_at"`
+}
+
+// Hash directly from canonical files; only manifest metadata and a fixed read
+// buffer are retained, never attachment contents or a separate persistent index.
+func portableAssetManifest(ctx context.Context, root string) ([]portableAssetSummary, error) {
+	root, err := portableRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("source root is not a directory")
+	}
+	assets := make([]portableAssetSummary, 0)
+	buffer := make([]byte, 32<<10)
+	err = filepath.WalkDir(root, func(filename string, entry fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if walkErr != nil {
+			return walkErr
+		}
+		if filename == root {
+			return nil
+		}
+		rel, err := filepath.Rel(root, filename)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if portableRelative(rel) != nil {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || strings.EqualFold(filepath.Ext(rel), ".md") {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		if _, err := safePortablePath(root, rel, false); err != nil {
+			return err
+		}
+		file, err := os.Open(filename)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		opened, err := file.Stat()
+		if err != nil {
+			return err
+		}
+		if !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+			return fmt.Errorf("attachment changed while listing")
+		}
+		hash := sha256.New()
+		var size int64
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			n, readErr := file.Read(buffer)
+			if n > 0 {
+				_, _ = hash.Write(buffer[:n])
+				size += int64(n)
+			}
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			if readErr != nil {
+				return readErr
+			}
+		}
+		after, err := file.Stat()
+		if err != nil {
+			return err
+		}
+		if size != opened.Size() || after.Size() != opened.Size() || !after.ModTime().Equal(opened.ModTime()) {
+			return fmt.Errorf("attachment changed while listing")
+		}
+		assets = append(assets, portableAssetSummary{
+			Path: rel, Revision: fmt.Sprintf("%x", hash.Sum(nil)), Size: size,
+			ModifiedAt: opened.ModTime().UTC().Format(time.RFC3339Nano),
+		})
+		return file.Close()
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(assets, func(i, j int) bool { return assets[i].Path < assets[j].Path })
+	return assets, ctx.Err()
+}
+
+func (d *Daemon) portableAssets(w http.ResponseWriter, r *http.Request, source sourceRoot) {
+	assets, err := portableAssetManifest(r.Context(), source.root)
+	if err != nil {
+		writeHTTPError(w, http.StatusInternalServerError, "read_failed", "unable to list attachments")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	writeHTTPJSON(w, http.StatusOK, map[string]any{"assets": assets})
 }
 
 func portablePathError(w http.ResponseWriter, err error) {
@@ -247,6 +373,10 @@ func (d *Daemon) portableAsset(w http.ResponseWriter, r *http.Request, source so
 		portablePathError(w, err)
 		return
 	}
+	if response := d.checkCreationReservation(source.SourceID, rel, ""); response != nil {
+		writeDispatchError(w, response)
+		return
+	}
 	content, err := io.ReadAll(http.MaxBytesReader(w, r.Body, portableMaxFile))
 	if err != nil {
 		writeHTTPError(w, http.StatusRequestEntityTooLarge, "invalid_body", "attachment exceeds limit or could not be read")
@@ -282,14 +412,38 @@ func (d *Daemon) portableAsset(w http.ResponseWriter, r *http.Request, source so
 }
 
 func portableWriteExclusive(filename string, content io.Reader) error {
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	// Only a complete, synced file becomes visible at the canonical path.
+	// A crash during copying leaves a hidden staging file, never a partial note.
+	file, err := os.CreateTemp(filepath.Dir(filename), ".lore-create-*")
 	if err != nil {
 		return err
 	}
+	staged := file.Name()
+	defer os.Remove(staged)
 	_, copyErr := io.Copy(file, content)
+	var syncErr error
+	if copyErr == nil {
+		syncErr = file.Sync()
+	}
 	closeErr := file.Close()
-	if err := errors.Join(copyErr, closeErr); err != nil {
-		_ = os.Remove(filename)
+	if err := errors.Join(copyErr, syncErr, closeErr); err != nil {
+		return err
+	}
+	parent, err := os.Open(filepath.Dir(filename))
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	if err := os.Link(staged, filename); err != nil {
+		return err
+	}
+	if err := parent.Sync(); err != nil {
+		// Roll back only our published inode; never unlink an external replacement.
+		stagedInfo, stagedErr := os.Stat(staged)
+		finalInfo, finalErr := os.Lstat(filename)
+		if stagedErr == nil && finalErr == nil && os.SameFile(stagedInfo, finalInfo) {
+			return errors.Join(err, os.Remove(filename))
+		}
 		return err
 	}
 	return nil
@@ -423,6 +577,12 @@ func (d *Daemon) portableImport(w http.ResponseWriter, r *http.Request, source s
 		}
 		writeHTTPError(w, status, code, "archive contains unsafe, conflicting, corrupt, or oversized entries")
 		return
+	}
+	for _, entry := range entries {
+		if response := d.checkCreationReservation(source.SourceID, entry.rel, ""); response != nil {
+			writeDispatchError(w, response)
+			return
+		}
 	}
 	createdFiles := make([]string, 0, len(entries))
 	createdDirs := make([]string, 0)

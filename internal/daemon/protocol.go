@@ -29,6 +29,7 @@ type Request struct {
 	BaseRevision string `json:"base_revision,omitempty"`
 	Cursor       string `json:"cursor,omitempty"`
 	DocumentID   string `json:"document_id,omitempty"`
+	OperationID  string `json:"operation_id,omitempty"`
 	NewPath      string `json:"new_path,omitempty"`
 	Name         string `json:"name,omitempty"`
 	// Existing entity CRUD fields.

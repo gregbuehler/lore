@@ -155,6 +155,12 @@ func (d *Daemon) dispatchDocumentWrite(req *Request) *Response {
 	if !source.Writable {
 		return &Response{OK: false, Code: "readonly", Error: "source is read-only"}
 	}
+	if response := d.replayDocumentCreate(source, req); response != nil {
+		return response
+	}
+	if req.BaseRevision == "" && req.DocumentID != "" {
+		return &Response{Code: "invalid_request", Error: "documentID is a precondition for existing documents, not a creation identifier"}
+	}
 	path, rel, err := safeDocumentPath(source.root, req.RelPath, true)
 	if err != nil {
 		return pathError(err)
@@ -170,8 +176,12 @@ func (d *Daemon) dispatchDocumentWrite(req *Request) *Response {
 		if req.BaseRevision == "" || revision(current) != req.BaseRevision {
 			return &Response{OK: false, Code: "conflict", Error: "document revision conflict"}
 		}
-		if _, err := d.document(source, rel, current); err != nil {
+		currentDocument, err := d.document(source, rel, current)
+		if err != nil {
 			return identityError(err)
+		}
+		if req.DocumentID != "" && currentDocument.DocumentID != req.DocumentID {
+			return documentConflict()
 		}
 	} else if errors.Is(readErr, os.ErrNotExist) {
 		if req.BaseRevision != "" {
@@ -179,6 +189,11 @@ func (d *Daemon) dispatchDocumentWrite(req *Request) *Response {
 		}
 	} else {
 		return &Response{OK: false, Error: "unable to read document"}
+	}
+	if errors.Is(readErr, os.ErrNotExist) {
+		if response := d.checkCreationReservation(source.SourceID, rel, req.OperationID); response != nil {
+			return response
+		}
 	}
 	if err := ensureDocumentParents(source.root, path); err != nil {
 		return pathError(err)
@@ -191,6 +206,9 @@ func (d *Daemon) dispatchDocumentWrite(req *Request) *Response {
 		mode = info.Mode().Perm()
 	}
 	if errors.Is(readErr, os.ErrNotExist) {
+		if response := d.reserveDocumentCreate(source, rel, req); response != nil {
+			return response
+		}
 		if err := portableWriteExclusive(path, strings.NewReader(req.Content)); err != nil {
 			if errors.Is(err, os.ErrExist) {
 				return &Response{OK: false, Code: "conflict", Error: "document already exists"}
@@ -205,6 +223,9 @@ func (d *Daemon) dispatchDocumentWrite(req *Request) *Response {
 	}
 	doc, err := d.document(source, rel, []byte(req.Content))
 	if err != nil {
+		return identityError(err)
+	}
+	if err := d.commitDocumentCreate(source.SourceID, req.OperationID); err != nil {
 		return identityError(err)
 	}
 	return &Response{OK: true, Document: doc}

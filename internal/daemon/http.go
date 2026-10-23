@@ -35,6 +35,8 @@ type httpDocumentWriteRequest struct {
 	Path         string `json:"path"`
 	Content      string `json:"content"`
 	BaseRevision string `json:"baseRevision"`
+	DocumentID   string `json:"documentID,omitempty"`
+	OperationID  string `json:"operationID,omitempty"`
 }
 
 func startHTTPServer(d *Daemon) (*http.Server, net.Listener, error) {
@@ -170,7 +172,7 @@ func (d *Daemon) routeHTTP(w http.ResponseWriter, r *http.Request) {
 				writeHTTPError(w, http.StatusBadRequest, "invalid_request", "invalid JSON request")
 				return
 			}
-			resp := d.dispatch(&Request{Type: "document_write", SourceID: body.Source, RelPath: body.Path, Content: body.Content, BaseRevision: body.BaseRevision})
+			resp := d.dispatch(&Request{Type: "document_write", SourceID: body.Source, RelPath: body.Path, Content: body.Content, BaseRevision: body.BaseRevision, DocumentID: body.DocumentID, OperationID: body.OperationID})
 			if !resp.OK {
 				writeDispatchError(w, resp)
 				return
@@ -189,6 +191,8 @@ func writeDispatchError(w http.ResponseWriter, resp *Response) {
 	switch resp.Code {
 	case "conflict":
 		status = http.StatusConflict
+	case "creation_gone":
+		status = http.StatusGone
 	case "readonly":
 		status = http.StatusForbidden
 	case "not_found", "source_not_found":

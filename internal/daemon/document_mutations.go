@@ -41,6 +41,15 @@ func (d *Daemon) dispatchDocumentDelete(req *Request) *Response {
 	if req.BaseRevision == "" || revision(content) != req.BaseRevision {
 		return documentConflict()
 	}
+	if req.DocumentID != "" {
+		current, err := d.document(source, rel, content)
+		if err != nil {
+			return identityError(err)
+		}
+		if current.DocumentID != req.DocumentID {
+			return documentConflict()
+		}
+	}
 	if err := os.Remove(path); err != nil {
 		return &Response{OK: false, Error: "unable to delete document"}
 	}
@@ -91,12 +100,19 @@ func (d *Daemon) dispatchDocumentMove(req *Request) *Response {
 	if req.BaseRevision == "" || revision(original) != req.BaseRevision {
 		return documentConflict()
 	}
+	// Validate identity before every success path, including a same-path move.
+	identity, err := d.document(source, oldRel, original)
+	if err != nil {
+		return identityError(err)
+	}
+	if req.DocumentID != "" && identity.DocumentID != req.DocumentID {
+		return documentConflict()
+	}
 	if oldRel == newRel {
-		doc, err := d.document(source, oldRel, original)
-		if err != nil {
-			return &Response{OK: false, Error: "unable to read document identity"}
-		}
-		return &Response{OK: true, Document: doc}
+		return &Response{OK: true, Document: identity}
+	}
+	if response := d.checkCreationReservation(source.SourceID, newRel, ""); response != nil {
+		return response
 	}
 	if _, err := os.Lstat(newPath); err == nil {
 		return &Response{OK: false, Code: "conflict", Error: "destination already exists"}
@@ -120,11 +136,6 @@ func (d *Daemon) dispatchDocumentMove(req *Request) *Response {
 	}
 	if moved.path == "" || revision(moved.content) != req.BaseRevision {
 		return documentConflict()
-	}
-	// Materialize identity before changing paths, preserving its original creation
-	// time and ID even when the document has never been opened through the API.
-	if _, err := d.document(source, oldRel, moved.content); err != nil {
-		return &Response{OK: false, Error: "unable to read document identity"}
 	}
 	if err := ensureDocumentParents(source.root, newPath); err != nil {
 		return pathError(err)
