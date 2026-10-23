@@ -1,0 +1,23 @@
+# Apply only after the selected OCI release exists; use one deployment owner.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: lore
+  namespace: argocd
+spec:
+  destination:
+    namespace: lore
+    server: https://kubernetes.default.svc
+  project: default
+  revisionHistoryLimit: 3
+  source:
+    repoURL: ghcr.io/gregbuehler/charts
+    chart: lore
+    targetRevision: 0.1.0
+    helm:
+      releaseName: lore
+      valueFiles:
+        - examples/home-cluster.yaml
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

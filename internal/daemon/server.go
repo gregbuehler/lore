@@ -3,6 +3,7 @@ package daemon
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,7 +17,8 @@ import (
 
 // Daemon is the long-running process that holds the index.
 type Daemon struct {
-	state *State
+	state   *State
+	watcher *Watcher
 }
 
 // Start initializes the daemon: builds the index, starts the socket server,
@@ -26,6 +28,11 @@ func Start(vaultPath string, libraryPaths []string) error {
 	sockDir := filepath.Dir(SocketPath())
 	if err := os.MkdirAll(sockDir, 0o755); err != nil {
 		return fmt.Errorf("creating socket dir: %w", err)
+	}
+	// LORE_SOCKET may live outside HOME (for example /tmp in a container),
+	// while the PID file retains its independent default runtime directory.
+	if err := os.MkdirAll(filepath.Dir(PidPath()), 0o755); err != nil {
+		return fmt.Errorf("creating pid dir: %w", err)
 	}
 
 	if err := prepareSocketPath(SocketPath()); err != nil {
@@ -55,6 +62,15 @@ func Start(vaultPath string, libraryPaths []string) error {
 	}
 	defer state.Store.Close()
 
+	d := &Daemon{state: state}
+	httpServer, httpListener, err := startHTTPServer(d)
+	if err != nil {
+		return fmt.Errorf("starting Lore HTTP API: %w", err)
+	}
+	if httpServer != nil {
+		defer httpServer.Close()
+	}
+
 	fmt.Printf("lore daemon: indexing %d paths...\n", len(state.Paths))
 	start := time.Now()
 	if err := state.BuildIndex(); err != nil {
@@ -73,8 +89,6 @@ func Start(vaultPath string, libraryPaths []string) error {
 	defer listener.Close()
 	defer removeSocketIfSame(SocketPath(), listener)
 
-	d := &Daemon{state: state}
-
 	// Handle shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -89,8 +103,17 @@ func Start(vaultPath string, libraryPaths []string) error {
 	if err != nil {
 		fmt.Printf("lore daemon: warning: file watcher disabled: %v\n", err)
 	} else {
+		d.watcher = watcher
 		go watcher.Start()
 		defer watcher.Stop()
+	}
+	if httpServer != nil {
+		fmt.Printf("lore daemon: authenticated HTTP API listening on %s\n", httpListener.Addr())
+		go func() {
+			if err := httpServer.Serve(httpListener); err != nil && err != http.ErrServerClosed {
+				fmt.Printf("lore daemon: HTTP API stopped: %v\n", err)
+			}
+		}()
 	}
 
 	fmt.Printf("lore daemon: listening on %s\n", SocketPath())
@@ -169,6 +192,8 @@ func (d *Daemon) handleConn(conn net.Conn) {
 }
 
 func (d *Daemon) dispatch(req *Request) *Response {
+	d.state.apiMu.Lock()
+	defer d.state.apiMu.Unlock()
 	switch req.Type {
 	case "ping":
 		return &Response{OK: true}
@@ -289,6 +314,32 @@ func (d *Daemon) dispatch(req *Request) *Response {
 	case "libraries":
 		return d.dispatchLibraries()
 
+	case "sources":
+		return d.dispatchSources()
+	case "source_create":
+		return d.dispatchSourceCreate(req)
+	case "folders":
+		return d.dispatchFolders(req)
+	case "folder_create":
+		return d.dispatchFolderCreate(req)
+	case "document_delete":
+		return d.dispatchDocumentDelete(req)
+	case "document_move":
+		return d.dispatchDocumentMove(req)
+	case "document_backlinks":
+		return d.dispatchBacklinks(req)
+
+	case "document_list":
+		return d.dispatchDocumentList(req)
+
+	case "document_read":
+		return d.dispatchDocumentRead(req)
+
+	case "document_resolve":
+		return d.dispatchDocumentResolve(req)
+	case "document_write":
+		return d.dispatchDocumentWrite(req)
+
 	case "entity_create":
 		return d.dispatchEntityCreate(req)
 
@@ -303,7 +354,6 @@ func (d *Daemon) dispatch(req *Request) *Response {
 
 	case "entity_list":
 		return d.dispatchEntityList(req)
-
 	default:
 		return &Response{OK: false, Error: fmt.Sprintf("unknown request type: %q", req.Type)}
 	}

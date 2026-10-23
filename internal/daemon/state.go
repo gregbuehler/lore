@@ -6,19 +6,30 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gregbuehler/lore/internal/config"
 	"github.com/gregbuehler/lore/internal/parse"
-	"github.com/gregbuehler/lore/internal/resolve"
 	"github.com/gregbuehler/lore/internal/store"
 )
 
 // State holds the daemon's index state. The SQLite store persists between
 // restarts; the file watcher keeps it current with the markdown source of truth.
 type State struct {
-	Store     *store.Store
-	VaultPath string
-	Paths     []string // all indexed root paths (vault + libraries)
-	resolver  *shortNameResolver
-	mu        sync.RWMutex
+	Store             *store.Store
+	VaultPath         string
+	Paths             []string // all indexed root paths (vault + libraries)
+	sources           []sourceRoot
+	initialized       bool
+	resolver          *shortNameResolver
+	mu                sync.RWMutex
+	apiMu             sync.Mutex
+	identityMu        sync.Mutex
+	identities        map[string]documentIdentity
+	configuredSources map[string]bool
+}
+
+type sourceRoot struct {
+	Source
+	root string
 }
 
 // NewState opens the SQLite store and prepares for indexing.
@@ -29,11 +40,73 @@ func NewState(vaultPath string, libraryPaths []string) (*State, error) {
 	}
 
 	paths := append([]string{vaultPath}, libraryPaths...)
-	return &State{
-		Store:     db,
-		VaultPath: vaultPath,
-		Paths:     paths,
-	}, nil
+	state := &State{Store: db, VaultPath: vaultPath, Paths: paths}
+	state.sources = append(state.sources, sourceRoot{
+		Source: Source{SourceID: "vault", Name: "Vault", Kind: "vault", Writable: true},
+		root:   vaultPath,
+	})
+
+	// Source metadata is intentionally additive to the legacy Start signature.
+	// A missing/invalid config must not prevent the legacy daemon from starting;
+	// new source APIs report invalid metadata rather than exposing ambiguous IDs.
+	cfg, cfgErr := config.Load(vaultPath)
+	if cfgErr == nil {
+		state.configuredSources = make(map[string]bool)
+		// Subscription names, not root basenames, are the stable public IDs.
+		// Keep distinct subscriptions even when they intentionally share a root.
+		for _, sub := range cfg.Subscriptions {
+			name := strings.TrimSpace(sub.Name)
+			state.configuredSources["library:"+name] = true
+			state.sources = append(state.sources, sourceRoot{
+				Source: Source{SourceID: "library:" + name, Name: name, Kind: "library", Writable: sub.Access == "read-write"},
+				root:   sub.ContentPath(),
+			})
+			found := false
+			for _, path := range state.Paths {
+				if sameRoot(path, sub.ContentPath()) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				state.Paths = append(state.Paths, sub.ContentPath())
+			}
+		}
+		// Unconfigured paths passed by legacy callers retain their old readonly
+		// basename-derived identities.
+		for _, path := range libraryPaths {
+			configured := false
+			for _, sub := range cfg.Subscriptions {
+				if sameRoot(path, sub.ContentPath()) {
+					configured = true
+					break
+				}
+			}
+			if configured {
+				continue
+			}
+			name := filepath.Base(path)
+			state.sources = append(state.sources, sourceRoot{
+				Source: Source{SourceID: "library:" + name, Name: name, Kind: "library"},
+				root:   path,
+			})
+		}
+	} else {
+		for _, path := range libraryPaths {
+			name := filepath.Base(path)
+			state.sources = append(state.sources, sourceRoot{
+				Source: Source{SourceID: "library:" + name, Name: name, Kind: "library"},
+				root:   path,
+			})
+		}
+	}
+	return state, nil
+}
+
+func sameRoot(a, b string) bool {
+	aa, errA := filepath.Abs(a)
+	bb, errB := filepath.Abs(b)
+	return errA == nil && errB == nil && filepath.Clean(aa) == filepath.Clean(bb)
 }
 
 // BuildIndex walks all configured paths and populates the store.
@@ -41,7 +114,11 @@ func NewState(vaultPath string, libraryPaths []string) (*State, error) {
 func (s *State) BuildIndex() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.buildIndexLocked()
+	if err := s.buildIndexLocked(); err != nil {
+		return err
+	}
+	s.initialized = true
+	return nil
 }
 
 func (s *State) buildIndexLocked() error {
@@ -86,11 +163,6 @@ func (s *State) RebuildIndexForPath(path string) error {
 	return s.buildIndexLocked()
 }
 
-// skipIndexFile returns true for files that are infrastructure, not content.
-func skipIndexFile(name string) bool {
-	return resolve.SkipIndexFile(name)
-}
-
 func (s *State) indexPath(root string) error {
 	return filepath.Walk(root, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
@@ -102,10 +174,7 @@ func (s *State) indexPath(root string) error {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(fi.Name(), ".md") {
-			return nil
-		}
-		if skipIndexFile(fi.Name()) {
+		if fi.Mode()&os.ModeSymlink != 0 || !fi.Mode().IsRegular() || !strings.HasSuffix(fi.Name(), ".md") || strings.HasPrefix(fi.Name(), ".") {
 			return nil
 		}
 		return s.indexSingleFile(path, root)
@@ -160,12 +229,16 @@ func (s *State) indexSingleFile(path, root string) error {
 	return nil
 }
 
+// rootFor returns the most-specific registered root. Callers hold s.mu.
 func (s *State) rootFor(path string) string {
+	var best string
 	for _, root := range s.Paths {
 		rel, err := filepath.Rel(root, path)
 		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
-			return root
+			if best == "" || len(filepath.Clean(root)) > len(filepath.Clean(best)) {
+				best = root
+			}
 		}
 	}
-	return ""
+	return best
 }

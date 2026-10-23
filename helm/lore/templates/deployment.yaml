@@ -1,0 +1,119 @@
+{{- if ne (int .Values.replicaCount) 1 }}{{ fail "Lore uses a single-writer SQLite index; replicaCount must be 1" }}{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "lore.fullname" . }}
+  labels:
+    {{- include "lore.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "lore.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "lore.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}{{ toYaml . | nindent 8 }}{{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext: {{ toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: lore
+          image: "{{ .Values.image.repository }}:{{ default (default .Chart.AppVersion .Values.global.revision) .Values.image.tag }}"
+          imagePullPolicy: {{ default .Values.global.imagePullPolicy .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/lore"]
+          args: ["daemon", "start", "--vault", {{ .Values.vault.path | quote }}]
+          env:
+            - name: LORE_DB
+              value: {{ printf "%s/.lore/index-data" .Values.vault.path | quote }}
+            - name: LORE_API_ADDR
+              value: {{ .Values.api.listenAddress | quote }}
+            - name: LORE_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "api.tokenSecret.name is required" .Values.api.tokenSecret.name }}
+                  key: {{ required "api.tokenSecret.key is required" .Values.api.tokenSecret.key }}
+            - name: HOME
+              value: {{ printf "%s/.lore/home" .Values.vault.path | quote }}
+            - name: LORE_SOCKET
+              value: /tmp/lore.sock
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          startupProbe: {{ toYaml .Values.startupProbe | nindent 12 }}
+          livenessProbe: {{ toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe: {{ toYaml .Values.readinessProbe | nindent 12 }}
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          securityContext: {{ toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: vault
+              mountPath: {{ .Values.vault.path | quote }}
+            - name: tmp
+              mountPath: /tmp
+      initContainers:
+        - name: prepare-vault-metadata
+          image: "{{ .Values.image.repository }}:{{ default (default .Chart.AppVersion .Values.global.revision) .Values.image.tag }}"
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              mkdir -p "$VAULT/.lore/home"
+              if [ ! -e "$VAULT/.lore/config.yaml" ]; then
+                if [ -e /seed/config.yaml ]; then
+                  cp /seed/config.yaml "$VAULT/.lore/config.yaml"
+                else
+                  printf 'vault:\n  path: %s\nsubscriptions: []\n' "$VAULT" > "$VAULT/.lore/config.yaml"
+                fi
+              fi
+          env:
+            - name: VAULT
+              value: {{ .Values.vault.path | quote }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: vault
+              mountPath: {{ .Values.vault.path | quote }}
+            {{- if .Values.config.existingConfigMap }}
+            - name: config
+              mountPath: /seed
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: vault
+          persistentVolumeClaim:
+            claimName: {{ default (include "lore.fullname" .) .Values.vault.existingClaim }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.config.existingConfigMap }}
+        - name: config
+          configMap:
+            name: {{ .Values.config.existingConfigMap }}
+            items:
+              - key: config.yaml
+                path: config.yaml
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}

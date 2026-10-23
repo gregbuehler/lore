@@ -41,6 +41,8 @@ func NewWatcher(state *State) (*Watcher, error) {
 	w.rebuildIndex = state.BuildIndex
 
 	// Add all directories under watched paths
+	state.mu.RLock()
+	defer state.mu.RUnlock()
 	dirs := 0
 	for _, root := range state.Paths {
 		n, err := w.addRecursive(root)
@@ -90,12 +92,18 @@ func (w *Watcher) Stop() {
 }
 
 func (w *Watcher) handleEvent(event fsnotify.Event) {
-	path := event.Name
+	path := filepath.Clean(event.Name)
+	if !w.acceptsPath(path) {
+		return
+	}
 
-	// If a new directory was created, watch it
+	// A directory can already contain files before its watch is installed.
+	// Queue a rebuild even if their individual create events were missed.
 	if event.Has(fsnotify.Create) {
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			w.handleCreatedDirectory(path)
+		if info, err := os.Lstat(path); err == nil && info.IsDir() {
+			if w.handleCreatedDirectory(path) > 0 {
+				w.queue(path)
+			}
 			return
 		}
 	}
@@ -105,21 +113,58 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 		return
 	}
 
-	// Skip hidden paths
-	for _, part := range strings.Split(path, string(filepath.Separator)) {
-		if strings.HasPrefix(part, ".") {
-			return
-		}
-	}
+	w.queue(path)
+}
 
-	// Debounce: record the latest event time for this path
+func (w *Watcher) queue(path string) {
+	// Debounce: record the latest event time for this path.
 	w.mu.Lock()
 	w.pending[path] = time.Now()
 	w.mu.Unlock()
 }
 
+// Hidden ancestors of a registered root are allowed, but hidden entries and
+// symlinks within that root are not. Root selection is protected against source
+// creation and subscription reloads, and favors a nested library over the vault.
+func (w *Watcher) acceptsPath(path string) bool {
+	w.state.mu.RLock()
+	root := w.state.rootFor(path)
+	w.state.mu.RUnlock()
+	if root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	current := root
+	parts := strings.Split(rel, string(filepath.Separator))
+	for i := -1; i < len(parts); i++ {
+		if i >= 0 {
+			if parts[i] == "." {
+				continue
+			}
+			if strings.HasPrefix(parts[i], ".") {
+				return false
+			}
+			current = filepath.Join(current, parts[i])
+		}
+		info, err := os.Lstat(current)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // Deleted or renamed Markdown must also trigger a rebuild.
+			}
+			return false
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func (w *Watcher) handleCreatedDirectory(path string) int {
-	if strings.HasPrefix(filepath.Base(path), ".") {
+	if !w.acceptsPath(path) {
 		return 0
 	}
 	count, err := w.addRecursive(path)
@@ -162,7 +207,7 @@ func (w *Watcher) addRecursive(root string) (int, error) {
 		if !info.IsDir() {
 			return nil
 		}
-		if strings.HasPrefix(info.Name(), ".") {
+		if path != root && strings.HasPrefix(info.Name(), ".") {
 			return filepath.SkipDir
 		}
 		if err := w.fw.Add(path); err != nil {

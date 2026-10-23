@@ -10,46 +10,110 @@ import (
 
 // Request is the wire format for client → daemon messages.
 type Request struct {
-	Type     string            `json:"type"`               // "query", "graph", "context", "ping", "status", "reindex"
-	Query    string            `json:"query,omitempty"`    // for type=query
-	Node     string            `json:"node,omitempty"`     // for type=graph/context
-	Context  string            `json:"context,omitempty"`  // for type=context: node path
-	Brief    bool              `json:"brief,omitempty"`    // for type=context: truncate to first section
+	Type     string            `json:"type"`              // "query", "graph", "context", "ping", "status", "reindex"
+	Query    string            `json:"query,omitempty"`   // for type=query
+	Node     string            `json:"node,omitempty"`    // for type=graph/context
+	Context  string            `json:"context,omitempty"` // for type=context: node path
+	Brief    bool              `json:"brief,omitempty"`   // for type=context: truncate to first section
 	EdgeType string            `json:"edge_type,omitempty"`
 	Depth    int               `json:"depth,omitempty"`
 	Limit    int               `json:"limit,omitempty"`
-	Filter   map[string]string `json:"filter,omitempty"`   // e.g. {"entity_type": "service"}
+	Filter   map[string]string `json:"filter,omitempty"` // e.g. {"entity_type": "service"}
 
-	// Entity CRUD fields
+	// Source-scoped Markdown document operations.
+	SourceID     string `json:"source_id,omitempty"`
+	RelPath      string `json:"rel_path,omitempty"`
+	FromPath     string `json:"from_path,omitempty"`
+	Target       string `json:"target,omitempty"`
+	Content      string `json:"content,omitempty"`
+	BaseRevision string `json:"base_revision,omitempty"`
+	Cursor       string `json:"cursor,omitempty"`
+	DocumentID   string `json:"document_id,omitempty"`
+	NewPath      string `json:"new_path,omitempty"`
+	Name         string `json:"name,omitempty"`
+	// Existing entity CRUD fields.
 	EntityPath  string            `json:"entity_path,omitempty"`  // e.g. "Wiki/Services/foo"
 	EntityType  string            `json:"entity_type,omitempty"`  // for create: service, person, etc.
 	EntityTitle string            `json:"entity_title,omitempty"` // for create
 	SetFields   map[string]string `json:"set_fields,omitempty"`   // for update: key=value pairs
 	Changelog   string            `json:"changelog,omitempty"`    // for update: append to Change Log
 	Confirm     bool              `json:"confirm,omitempty"`      // for delete: safety flag
+
 }
 
 // Response is the wire format for daemon → client messages.
 type Response struct {
-	OK        bool          `json:"ok"`
-	Error     string        `json:"error,omitempty"`
-	Results   []Result      `json:"results,omitempty"`
-	Stats     *IndexStats   `json:"stats,omitempty"`
-	Content   string        `json:"content,omitempty"` // for type=context: assembled markdown
-	ElapsedMs float64       `json:"elapsed_ms"`
+	OK         bool                `json:"ok"`
+	Error      string              `json:"error,omitempty"`
+	Code       string              `json:"code,omitempty"`
+	Results    []Result            `json:"results,omitempty"`
+	Stats      *IndexStats         `json:"stats,omitempty"`
+	Content    string              `json:"content,omitempty"` // for type=context: assembled markdown
+	Sources    []Source            `json:"sources,omitempty"`
+	Documents  []DocumentSummary   `json:"documents,omitempty"`
+	Document   *Document           `json:"document,omitempty"`
+	Resolution *DocumentResolution `json:"resolution,omitempty"`
+	HasMore    bool                `json:"has_more,omitempty"`
+	NextCursor string              `json:"next_cursor,omitempty"`
+	ElapsedMs  float64             `json:"elapsed_ms"`
+	Source     *Source             `json:"source,omitempty"`
+	Folders    []Folder            `json:"folders,omitempty"`
+	Path       string              `json:"path,omitempty"`
+	Imported   int                 `json:"imported,omitempty"`
 }
 
-// Result is a single item in a query response.
 type Result struct {
-	Path       string  `json:"path"`
-	RelPath    string  `json:"rel_path"`
-	Title      string  `json:"title"`
+	Path       string  `json:"path,omitempty"`
+	RelPath    string  `json:"rel_path,omitempty"`
+	Title      string  `json:"title,omitempty"`
 	EntityType string  `json:"entity_type,omitempty"`
 	Score      float64 `json:"score,omitempty"`
 	Snippet    string  `json:"snippet,omitempty"`
 	Abstract   string  `json:"abstract,omitempty"`
 	EdgeType   string  `json:"edge_type,omitempty"`
 	Depth      int     `json:"depth,omitempty"`
+}
+
+type Source struct {
+	SourceID string `json:"source_id"`
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+	Writable bool   `json:"writable"`
+}
+
+type Folder struct {
+	Path string `json:"path"`
+}
+
+type DocumentSummary struct {
+	DocumentID string `json:"document_id"`
+	CreatedAt  string `json:"created_at"`
+	ModifiedAt string `json:"modified_at"`
+	SourceID   string `json:"source_id"`
+	RelPath    string `json:"rel_path"`
+	Title      string `json:"title"`
+	Excerpt    string `json:"excerpt"`
+	Revision   string `json:"revision"`
+}
+
+type Document struct {
+	DocumentID string         `json:"document_id"`
+	CreatedAt  string         `json:"created_at"`
+	ModifiedAt string         `json:"modified_at"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+	SourceID   string         `json:"source_id"`
+	RelPath    string         `json:"rel_path"`
+	Title      string         `json:"title"`
+	Content    string         `json:"content"`
+	Revision   string         `json:"revision"`
+}
+
+type DocumentResolution struct {
+	DocumentID string `json:"document_id,omitempty"`
+	Resolved   bool   `json:"resolved"`
+	SourceID   string `json:"source_id,omitempty"`
+	RelPath    string `json:"rel_path,omitempty"`
+	Title      string `json:"title,omitempty"`
 }
 
 // IndexStats reports the state of the daemon's index.

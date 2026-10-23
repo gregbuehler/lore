@@ -1,0 +1,17 @@
+# Supply immutable image.tag after image publication/import.
+fullnameOverride: lore
+imagePullSecrets: []
+api:
+  tokenSecret:
+    name: lore-api
+    key: LORE_API_TOKEN
+# Lore is never exposed through the public Grimoire ingress.
+ingress:
+  enabled: false
+vault:
+  path: /vault
+  existingClaim: lore-vault
+  storageClass: grimoire-local
+  size: 10Gi
+nodeSelector:
+  kubernetes.io/hostname: grayskull

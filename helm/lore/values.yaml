@@ -1,0 +1,84 @@
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+global:
+  imagePullPolicy: IfNotPresent
+  revision: ""
+replicaCount: 1
+image:
+  repository: ghcr.io/gregbuehler/lore
+  tag: ""
+  pullPolicy: ""
+service:
+  type: ClusterIP
+  port: 7520
+api:
+  listenAddress: 0.0.0.0:7520
+  tokenSecret:
+    name: lore-api
+    key: LORE_API_TOKEN
+vault:
+  path: /vault
+  existingClaim: ""
+  # Do not run SQLite WAL on NFS. Supply local/block-backed storage.
+  storageClass: grimoire-local
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+config:
+  # Optional initial config.yaml, copied once to the writable canonical PVC.
+  # It is never mounted over existing config or used to replace subscriptions.
+  existingConfigMap: ""
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: lore.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1
+    memory: 1Gi
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 5
+  failureThreshold: 120
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,18 @@
+{{- if not .Values.vault.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "lore.fullname" . }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "lore.labels" . | nindent 4 }}
+spec:
+  accessModes: {{ toYaml .Values.vault.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.vault.size }}
+  {{- with .Values.vault.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

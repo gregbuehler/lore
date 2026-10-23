@@ -97,6 +97,112 @@ lore search "authx mTLS"       # raw grep-style markdown search
 lore library skills             # list available skills
 ```
 
+## Authenticated document HTTP API
+
+The existing Unix-socket and CLI interfaces remain available. Set
+`LORE_API_TOKEN` to enable the HTTP listener alongside `lore daemon start`;
+`LORE_API_ADDR` defaults to `127.0.0.1:7520`. Every `/api/v1` route requires
+`Authorization: Bearer <token>`. `/healthz` and `/readyz` are unauthenticated
+health probes. Use TLS at the reverse proxy when exposing the service.
+
+The API operates on the same Markdown files and subscription configuration as
+the CLI. Source IDs remain `vault` and `library:<subscription-name>`; discovery
+includes configured subscriptions and does not hide the root vault. Libraries
+retain their configured `read-only` or `read-write` permissions.
+
+| Method and route | Request / result |
+| --- | --- |
+| `GET /api/v1/sources` | `{sources:[{source_id,name,kind,writable}]}` |
+| `POST /api/v1/sources` | `{name}` → `{source}`; persists a local read-write Lore subscription |
+| `GET /api/v1/documents?source=ID&q=text&cursor=CURSOR` | `{documents,hasMore,nextCursor}`; follow all pages; query uses the existing source-scoped FTS index |
+| `GET /api/v1/document?source=ID&path=note.md` | `{document}`; `id=DOCUMENT_ID` may replace `path` |
+| `PUT /api/v1/document` | `{source,path,content,baseRevision}` → `{document}` |
+| `DELETE /api/v1/document?source=ID&path=note.md&baseRevision=REV` | `{ok:true}` |
+| `POST /api/v1/document/move` | `{source,path,newPath,baseRevision}` → `{document}` |
+| `GET /api/v1/folders?source=ID` | `{folders:[{path}]}`, including empty nested folders |
+| `POST /api/v1/folders` | `{source,path}` → `{path}`; creates nested directories |
+| `GET /api/v1/resolve?source=ID&from=note.md&target=TARGET` | `{resolved,document_id?,source_id?,rel_path?,title?}` |
+| `GET /api/v1/backlinks?source=ID&path=note.md` | `{documents:[document summary]}`; same-library references only |
+| `GET /api/v1/asset?source=ID&path=images/photo.png` | Attachment bytes with safe type/disposition headers |
+| `POST /api/v1/asset?source=ID&path=images/photo.png` | Binary upload; existing paths are never replaced |
+| `GET /api/v1/export?source=ID&path=optional/folder` | ZIP preserving relative Markdown, attachments and empty folders |
+| `POST /api/v1/import?source=ID&folder=optional/folder` | ZIP bytes → `{imported:number}`; preflight rejects collisions rather than replacing files |
+
+URL-encode every query value. Errors are `{code,error}`; stale or missing
+revisions on an existing document and destination collisions return HTTP 409.
+An empty `baseRevision` creates a document only when its path does not exist.
+Delete and move require the current SHA256 revision. API mutations are
+serialized; clients must retain local edits on conflicts and reload the latest
+revision before retrying. API move preserves identity and updates same-library
+wiki/Markdown inbound references and the moved note's relative outbound links,
+without editing fenced/inline code. External editors remain supported through
+the filesystem watcher; they should not concurrently rename/write files while
+a multi-file move is being applied.
+
+Wiki-link filename paths are percent-encoded independently of heading and alias
+suffixes and decoded once during resolution. For example, a file named
+`new#draft.md` is linked as `[[new%23draft]]`, not `[[new#draft]]`. Rename/move
+preserves this distinction, including links inside ordinary list containers;
+fenced and inline code examples remain literal.
+
+### Stable document identity and migration
+
+Documents retain `source_id`, `rel_path`, `title`, `content` and `revision`.
+Read/list responses additionally include `document_id`, `created_at` and
+`modified_at` (RFC3339); reads include parsed YAML `metadata` when available.
+Summaries include `excerpt` instead of full content. Normal API reads lazily
+assign existing files random Lore-owned identities. Initial `created_at` uses
+the existing file modification time (historical creation dates cannot be
+recovered); subsequent writes preserve it, while `modified_at` follows the
+canonical file's modification time.
+
+The HTTP metadata projection stringifies YAML mapping keys and represents
+nonfinite scalars as `".nan"`, `".inf"` or `"-.inf"`, recursively. This keeps valid
+YAML frontmatter JSON-readable without rewriting the author's Markdown.
+
+Identity is stored atomically in `<vault>/.lore/document-identities.json`,
+separately from the disposable SQLite search index. This is a narrow additive
+migration: no Markdown is relocated, no author frontmatter is rewritten, and
+existing path-addressed HTTP/socket clients continue working. API rename/move,
+restart and reindex preserve IDs. An external filesystem rename is not an API
+move and cannot reliably preserve identity. Portable ZIP import creates new
+identities rather than importing another vault's private identity registry.
+
+API-created libraries live in `<vault>/.lore/libraries/<name>` and are recorded
+in `<vault>/.lore/config.yaml` as ordinary `local:` subscriptions. Existing
+subscriptions retain their paths. Hidden placement prevents double indexing as
+vault documents; each library is still indexed and watched as its own root.
+Restarting with the vault config rediscovers these libraries. Source discovery
+also reloads config subscriptions, so CLI subscribe/unsubscribe changes appear
+without restarting; new roots are indexed and watched on discovery.
+Hidden-path filtering is relative to the most-specific registered source root:
+a library beneath `.lore/libraries` receives external-edit notifications, while
+hidden metadata beneath that library, symlinks and out-of-source paths remain
+excluded.
+
+Back up canonical Markdown/attachments, all configured subscription roots,
+`.lore/config.yaml` and `.lore/document-identities.json` together. Do not delete
+the identity registry when rebuilding the index. `LORE_DB` selects the base
+directory for the derived per-vault SQLite index and is not canonical content.
+
+### Portable file safety
+
+Document/attachment/folder paths are confined to their selected source.
+Traversal and symlink components are rejected. The existing explicit document
+exceptions `.lore/LORE.md` and `.lore/skills/*.md` remain readable as Markdown;
+config and credentials are not exposed as assets. ZIP transfer excludes hidden
+files/directories (including `.git`, `.lore` and `.env`) and rejects unsafe
+archive names, symlinks, duplicate entries and existing destination conflicts.
+Import validates and expands the entire archive before applying files. Limits
+are 64 MiB compressed ZIP, 256 MiB expanded ZIP, 32 MiB per archive file or
+attachment upload, and 4096 archive entries (including implicit parent folders).
+`imported` counts files, not directories. Export/import preserve ordinary relative file layout,
+not Lore configuration, credentials or subscription registration.
+Ordinary POSIX colon and significant-space filenames roundtrip unchanged.
+Windows drive/UNC paths, traversal, control characters and hidden metadata are
+not accepted portable paths.
+
+
 ## Concepts
 
 **Vaults** are personal. Your notes, daily logs, drafts, and context. A vault is a directory of markdown files with `.lore/config.yaml`. Your agent works here.

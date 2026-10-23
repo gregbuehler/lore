@@ -1,0 +1,82 @@
+name: delivery
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+concurrency:
+  group: delivery-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  delivery:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+      - name: Select immutable release identity
+        id: release
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          if [[ "$REF_TYPE" == tag ]]; then
+            [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Release tags must be vMAJOR.MINOR.PATCH'; exit 1; }
+            echo "version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check source and chart
+        run: |
+          go test ./...
+          go vet ./...
+          helm lint helm/lore
+          helm template lore helm/lore --values helm/lore/examples/home-cluster.yaml --set-string image.tag="${{ steps.release.outputs.sha }}"
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: image
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ steps.release.outputs.sha }}
+            type=raw,value=${{ steps.release.outputs.version }},enable=${{ steps.release.outputs.version != '' }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.image.outputs.tags }}
+          labels: ${{ steps.image.outputs.labels }}
+          cache-from: type=gha,scope=lore
+          cache-to: type=gha,mode=max,scope=lore
+      - name: Publish matching release chart
+        if: github.event_name != 'pull_request' && steps.release.outputs.version != ''
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_OWNER: ${{ github.repository_owner }}
+        run: |
+          helm package helm/lore --version "$RELEASE_VERSION" --app-version "$RELEASE_VERSION" --destination /tmp
+          printf '%s' "$REGISTRY_TOKEN" | helm registry login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          helm push "/tmp/lore-$RELEASE_VERSION.tgz" "oci://ghcr.io/$REGISTRY_OWNER/charts"
